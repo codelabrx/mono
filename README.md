@@ -7,19 +7,19 @@ Ein leichtgewichtiges Monorepo-Tooling, das ausschließlich auf Bash und Standar
 **In einem bestehenden Projekt:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/codelabrx/monorepo/main/install.sh | bash
+curl -fsSL https://github.com/codelabrx/monorepo/blob/main/install.sh | bash
 ```
 
 **Bestimmte Version installieren:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/codelabrx/monorepo/main/install.sh | bash -s -- v1.0.0
+curl -fsSL https://github.com/codelabrx/monorepo/blob/main/install.sh | bash -s -- v1.0.0
 ```
 
 **In ein anderes Verzeichnis:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/codelabrx/monorepo/main/install.sh | bash -s -- --dir /path/to/project
+curl -fsSL https://github.com/codelabrx/monorepo/blob/main/install.sh | bash -s -- --dir /path/to/project
 ```
 
 ## Update
