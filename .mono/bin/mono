@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ─── Monorepo Root ermitteln ────────────────────────────────────────────────
+MONO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+MONO_DIR="${MONO_ROOT}/.mono"
+COMMANDS_DIR="${MONO_DIR}/commands"
+
+# ─── Farben ─────────────────────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# ─── Hilfsfunktionen ───────────────────────────────────────────────────────
+mono::log()   { echo -e "${GREEN}[mono]${NC} $*"; }
+mono::warn()  { echo -e "${YELLOW}[mono]${NC} $*" >&2; }
+mono::error() { echo -e "${RED}[mono]${NC} $*" >&2; }
+
+# ─── Verfügbare Commands auflisten ──────────────────────────────────────────
+mono::list_commands() {
+  local cmds=()
+  if [[ -d "${COMMANDS_DIR}" ]]; then
+    for f in "${COMMANDS_DIR}"/*.sh; do
+      [[ -f "$f" ]] || continue
+      cmds+=("$(basename "${f}" .sh)")
+    done
+  fi
+  echo "${cmds[@]}"
+}
+
+# ─── Help ───────────────────────────────────────────────────────────────────
+mono::help() {
+  echo ""
+  echo -e "${BOLD}mono${NC} – Monorepo CLI"
+  echo ""
+  echo -e "${BOLD}Verwendung:${NC}"
+  echo "  mono <command> [optionen]"
+  echo ""
+  echo -e "${BOLD}Verfügbare Commands:${NC}"
+
+  if [[ -d "${COMMANDS_DIR}" ]]; then
+    for f in "${COMMANDS_DIR}"/*.sh; do
+      [[ -f "$f" ]] || continue
+      local name
+      name="$(basename "${f}" .sh)"
+      # Erste Zeile nach "# description:" im Script als Beschreibung lesen
+      local desc
+      desc="$(grep -m1 '^# description:' "$f" 2>/dev/null | sed 's/^# description: *//' || echo "")"
+      printf "  ${CYAN}%-16s${NC} %s\n" "${name}" "${desc}"
+    done
+  else
+    echo "  (keine Commands gefunden)"
+  fi
+
+  echo ""
+  echo -e "${BOLD}Hilfe zu einem Command:${NC}"
+  echo "  mono <command> --help"
+  echo ""
+}
+
+# ─── Command Dispatcher ────────────────────────────────────────────────────
+mono::dispatch() {
+  local command="${1:-}"
+  shift 2>/dev/null || true
+
+  # Kein Command oder explizit help
+  if [[ -z "${command}" || "${command}" == "help" || "${command}" == "--help" || "${command}" == "-h" ]]; then
+    mono::help
+    return 0
+  fi
+
+  # Command-Script suchen
+  local script="${COMMANDS_DIR}/${command}.sh"
+
+  if [[ ! -f "${script}" ]]; then
+    mono::error "Unbekannter Command: ${BOLD}${command}${NC}"
+    echo ""
+    mono::help
+    return 1
+  fi
+
+  # Command ausführen – übergibt alle restlichen Argumente
+  # shellcheck source=/dev/null
+  source "${script}" "$@"
+}
+
+# ─── Exportierte Variablen für Commands ─────────────────────────────────────
+export MONO_ROOT
+export MONO_DIR
+
+# ─── Start ──────────────────────────────────────────────────────────────────
+mono::dispatch "$@"
