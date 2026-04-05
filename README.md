@@ -1,22 +1,24 @@
 # mono – Monorepo CLI
 
-Ein leichtgewichtiges Monorepo-Tooling, das ausschließlich auf Bash und Standard-Unix-Tools basiert. Kein Python, kein Node, kein jq – nur POSIX-kompatible Bordmittel + Git.
+A lightweight monorepo tooling based solely on Bash and standard Unix tools. No Python, no Node, no jq – just POSIX-compliant built-in tools + Git.
+
+> **Note:** This project is developed internally by [codelabrx](https://github.com/codelabrx) and is **not an actively maintained open-source project**. It is freely available under the GPL-3.0 license but is not maintained or extended for external use cases. Those who wish to adapt it to their own needs are welcome to fork the repository.
 
 ## Installation
 
-**In einem bestehenden Projekt:**
+**In an existing project:**
 
 ```bash
 curl -fsSL https://github.com/codelabrx/monorepo/blob/main/install.sh | bash
 ```
 
-**Bestimmte Version installieren:**
+**Install a specific version:**
 
 ```bash
 curl -fsSL https://github.com/codelabrx/monorepo/blob/main/install.sh | bash -s -- v1.0.0
 ```
 
-**In ein anderes Verzeichnis:**
+**Install to a different directory:**
 
 ```bash
 curl -fsSL https://github.com/codelabrx/monorepo/blob/main/install.sh | bash -s -- --dir /path/to/project
@@ -25,33 +27,33 @@ curl -fsSL https://github.com/codelabrx/monorepo/blob/main/install.sh | bash -s 
 ## Update
 
 ```bash
-./mono update                         # Auf neueste Version aktualisieren
-./mono update --check                 # Nur prüfen ob ein Update verfügbar ist
-./mono update --version v1.2.0        # Bestimmte Version installieren
-./mono update --list                  # Verfügbare Versionen anzeigen
+./mono update                         # Update to the latest version
+./mono update --check                 # Only check if an update is available
+./mono update --version v1.2.0        # Install a specific version
+./mono update --list                  # Show available versions
 ```
 
-Die aktuelle Version steht in `.mono/VERSION`. Beim Update werden `bin/`, `lib/`, `commands/` und `templates/` ersetzt – der Cache und eigene Konfigurationen bleiben erhalten.
+The current version is located in `.mono/VERSION`. During the update, `bin/`, `lib/`, `commands/`, and `templates/` are replaced – the cache and custom configurations remain intact.
 
-## Was wird installiert?
+## What gets installed?
 
-Der Installer richtet folgende Struktur im Zielverzeichnis ein:
+The installer sets up the following structure in the target directory:
 
 ```
-├── mono              # CLI Wrapper
-├── package.json      # Workspace-Konfiguration (apps/*, libs/*)
-├── bunfig.toml       # Bun-Konfiguration
-├── apps/             # Alle Applikationen
-├── libs/             # Gemeinsam genutzte Bibliotheken
-├── .github/workflows/  # CI/CD Workflows (checks, deploy)
+├── mono              # CLI wrapper
+├── package.json      # Workspace configuration (apps/*, libs/*)
+├── bunfig.toml       # Bun configuration
+├── apps/             # All applications
+├── libs/             # Shared libraries
+├── .github/workflows/  # CI/CD workflows (checks, deploy)
 └── .mono/
-    ├── VERSION       # Aktuelle CLI-Version
+    ├── VERSION       # Current CLI version
     ├── bin/mono      # CLI Entry-Script
-    ├── commands/     # Einzelne Commands (*.sh)
-    ├── lib/          # Shared Libraries (graph.sh, cache.sh)
-    ├── templates/    # Projekt-Templates (app/, lib/)
-    ├── workflows/    # Workflow-Quellen (werden nach .github/ kopiert)
-    └── cache/        # Task-Cache (automatisch verwaltet)
+    ├── commands/     # Single commands (*.sh)
+    ├── lib/          # Shared libraries (graph.sh, cache.sh)
+    ├── templates/    # Project templates (app/, lib/)
+    ├── workflows/    # Workflow sources (copied to .github/)
+    └── cache/        # Task cache (automatically managed)
 ```
 
 ## CLI
@@ -60,26 +62,26 @@ Der Installer richtet folgende Struktur im Zielverzeichnis ein:
 ./mono <command> [optionen]
 ```
 
-### Verfügbare Befehle
+### Available commands
 
-| Command | Beschreibung |
+| Command | Description |
 |---------|-------------|
-| `run` | Führt Targets aus der project.json eines Projekts aus |
-| `run-many` | Führt ein Target über mehrere Projekte aus |
-| `affected` | Führt ein Target nur in geänderten Projekten aus |
-| `graph` | Zeigt den Dependency-Graph aller Projekte |
-| `generate` | Generiert neue Apps oder Libs aus Templates |
-| `changed` | Zeigt geänderte Apps/Libs seit dem letzten Deploy |
-| `deploy-mark` | Setzt den Deploy-Tag auf den aktuellen Commit |
-| `cache` | Cache-Verwaltung (Statistik, auflisten, löschen) |
-| `update` | CLI auf die neueste Version aktualisieren |
-| `help` | Zeigt alle verfügbaren Commands |
+| `run` | Runs targets from the project.json of a project |
+| `run-many` | Runs a target over multiple projects |
+| `affected` | Runs a target only in changed projects |
+| `graph` | Shows the dependency graph of all projects |
+| `generate` | Generates new apps or libs from templates |
+| `changed` | Shows changed apps/libs since the last deploy |
+| `deploy-mark` | Sets the deploy tag on the current commit |
+| `cache` | Cache management (statistics, list, clear) |
+| `update` | CLI update to the latest version |
+| `help` | Shows all available commands |
 
 ---
 
 ## project.json
 
-Jedes Projekt (App/Lib) enthält eine `project.json`, die als Projekt-Marker, Target- und Deploy-Konfiguration dient:
+Each project (App/Lib) contains a `project.json`, which serves as the project marker, target, and deploy configuration:
 
 ```json
 {
@@ -113,18 +115,18 @@ Jedes Projekt (App/Lib) enthält eine `project.json`, die als Projekt-Marker, Ta
 }
 ```
 
-| Feld | Beschreibung |
+| Field | Description |
 |------|-------------|
-| `name` | Projektname |
-| `type` | `app` oder `lib` |
-| `path` | Relativer Pfad im Monorepo |
-| `targets` | Ausführbare Befehle |
-| `targets.<name>.command` | Der CLI-Befehl, der ausgeführt wird |
-| `targets.<name>.dependsOn` | Targets, die vorher ausgeführt werden müssen |
-| `targets.<name>.outputs` | Output-Pfade für Caching (z.B. `["dist/**"]`) |
-| `targets.<name>.cache` | `false` um Caching für dieses Target zu deaktivieren |
-| `deploy` | Deploy-Konfiguration |
-| `dependencies` | Lib-Abhängigkeiten (optional, zusätzlich zur Auto-Detection) |
+| `name` | Project name |
+| `type` | `app` or `lib` |
+| `path` | Relative path in the monorepo |
+| `targets` | Executable commands |
+| `targets.<name>.command` | The CLI command that is executed |
+| `targets.<name>.dependsOn` | Targets that must be executed before |
+| `targets.<name>.outputs` | Output paths for caching (e.g. `["dist/**"]`) |
+| `targets.<name>.cache` | `false` to disable caching for this target |
+| `deploy` | Deploy configuration |
+| `dependencies` | Library dependencies (optional, in addition to auto-detection) |
 
 ---
 
@@ -132,142 +134,142 @@ Jedes Projekt (App/Lib) enthält eine `project.json`, die als Projekt-Marker, Ta
 
 ### `run`
 
-Führt Targets aus der `project.json` eines Projekts aus. Löst dabei automatisch die `dependsOn`-Kette und Cross-Project Dependencies auf.
+Runs targets from the `project.json` of a project. Automatically resolves the `dependsOn` chain and cross-project dependencies.
 
 ```bash
-./mono run my-app:dev                 # Führt 'dev' aus (inkl. dependsOn-Kette)
-./mono run my-app:build               # Führt 'build' aus (inkl. install)
-./mono run my-app:start --skip-deps   # Nur start, ohne dependsOn
-./mono run my-app:build --skip-project-deps  # Ohne Cross-Project Deps
-./mono run my-app:build --no-cache    # Caching deaktivieren
-./mono run my-app:build --dry-run     # Zeigt Ausführungsplan
-./mono run my-app --list              # Alle Targets auflisten
-./mono run my-app                     # Alle Targets auflisten (Kurzform)
+./mono run my-app:dev                 # Runs 'dev' (including dependsOn chain)
+./mono run my-app:build               # Runs 'build' (including install)
+./mono run my-app:start --skip-deps   # Only start, without dependsOn
+./mono run my-app:build --skip-project-deps  # Without cross-project deps
+./mono run my-app:build --no-cache    # Disable caching
+./mono run my-app:build --dry-run     # Shows execution plan
+./mono run my-app --list              # Lists all targets
+./mono run my-app                     # Lists all targets (short form)
 ```
 
-Projekte können über ihren **Namen** oder **Pfad** referenziert werden:
+Projects can be referenced by their **name** or **path**:
 
 ```bash
-./mono run my-app:dev                 # Über project.json "name"
-./mono run backend/my-api:dev         # Über Pfad unter apps/ oder libs/
+./mono run my-app:dev                 # Over project.json "name"
+./mono run backend/my-api:dev         # Over path under apps/ or libs/
 ```
 
 ### `run-many`
 
-Führt ein Target über mehrere Projekte in **topologischer Reihenfolge** aus (Dependencies zuerst).
+Runs a target over multiple projects in **topological order** (dependencies first).
 
 ```bash
-./mono run-many --target build                      # Alle Projekte
-./mono run-many --target test --apps                # Nur Apps
-./mono run-many --target lint --libs                # Nur Libs
-./mono run-many --target build --projects app-a,lib-b  # Bestimmte Projekte
-./mono run-many --target build --parallel           # Parallel ausführen
+./mono run-many --target build                      # All projects
+./mono run-many --target test --apps                # Only apps
+./mono run-many --target lint --libs                # Only libs
+./mono run-many --target build --projects app-a,lib-b  # Specific projects
+./mono run-many --target build --parallel           # Run in parallel
 ./mono run-many --target test --parallel -j 4       # Max 4 parallel
-./mono run-many --target build --dry-run            # Plan anzeigen
-./mono run-many --target test --continue-on-error   # Bei Fehler weitermachen
+./mono run-many --target build --dry-run            # Plan display
+./mono run-many --target test --continue-on-error   # Continue on error
 ```
 
-| Flag | Beschreibung |
+| Flag | Description |
 |------|-------------|
-| `--target`, `-t` | Target-Name (pflicht) |
-| `--projects` | Komma-separierte Projektliste |
-| `--apps` | Nur Apps |
-| `--libs` | Nur Libs |
-| `--parallel` | Unabhängige Projekte parallel ausführen |
-| `-j <N>` | Maximale parallele Prozesse |
-| `--skip-deps` | dependsOn-Kette überspringen |
-| `--no-cache` | Caching deaktivieren |
-| `--dry-run` | Ausführungsplan anzeigen |
-| `--continue-on-error` | Bei Fehler weitermachen |
+| `--target`, `-t` | Target name (required) |
+| `--projects` | Comma-separated project list |
+| `--apps` | Only apps |
+| `--libs` | Only libs |
+| `--parallel` | Run independent projects in parallel |
+| `-j <N>` | Maximum parallel processes |
+| `--skip-deps` | Skip dependsOn chain |
+| `--no-cache` | Disable caching |
+| `--dry-run` | Shows execution plan |
+| `--continue-on-error` | Continue on error |
 
 ### `affected`
 
-Führt ein Target nur in **geänderten** Projekten aus. Erkennt auch transitiv betroffene Projekte (wenn sich eine Lib ändert, werden alle abhängigen Apps einbezogen).
+Runs a target only in **changed** projects. Detects transitively affected projects (if a lib changes, all dependent apps are included).
 
 ```bash
-./mono affected --target test                       # Test für alle geänderten
-./mono affected --target build --apps               # Nur geänderte Apps
-./mono affected --target lint --ref main~3          # Vergleich mit Git-Ref
-./mono affected --target build --parallel           # Parallel ausführen
-./mono affected --target test --continue-on-error   # Bei Fehler weitermachen
-./mono affected --target build --dry-run            # Plan anzeigen
+./mono affected --target test                       # Test for all changed
+./mono affected --target build --apps               # Only changed apps
+./mono affected --target lint --ref main~3          # Comparison with Git ref
+./mono affected --target build --parallel           # Run in parallel
+./mono affected --target test --continue-on-error   # Continue on error
+./mono affected --target build --dry-run            # Plan display
 ```
 
-| Flag | Beschreibung |
+| Flag | Description |
 |------|-------------|
-| `--target`, `-t` | Target-Name (pflicht) |
-| `--tag <tag>` | Deploy-Tag als Vergleichsbasis (Standard: `deploy/latest`) |
-| `--ref <ref>` | Beliebige Git-Ref als Vergleichsbasis |
-| `--apps` / `--libs` | Filter auf Typ |
-| `--parallel`, `-j` | Parallelisierung |
-| `--dry-run` | Zeigt betroffene Projekte als **(geändert)** oder **(transitiv)** |
+| `--target`, `-t` | Target name (required) |
+| `--tag <tag>` | Deploy tag as comparison basis (default: `deploy/latest`) |
+| `--ref <ref>` | Any Git ref as comparison basis |
+| `--apps` / `--libs` | Filter on type |
+| `--parallel`, `-j` | Parallelization |
+| `--dry-run` | Shows affected projects as **(changed)** or **(transitively)** |
 
 ### `graph`
 
-Zeigt den Dependency-Graph aller Projekte.
+Shows the dependency graph of all projects.
 
 ```bash
-./mono graph                          # Gesamtübersicht mit Baumdarstellung
-./mono graph --project my-app         # Details zu einem Projekt
-./mono graph --order                  # Topologische Build-Reihenfolge
-./mono graph --json                   # JSON-Ausgabe
+./mono graph                          # Overall view with tree representation
+./mono graph --project my-app         # Details for a project
+./mono graph --order                  # Topological build order
+./mono graph --json                   # JSON output
 ```
 
-| Flag | Beschreibung |
+| Flag | Description |
 |------|-------------|
-| `--project`, `-p` | Graph für ein einzelnes Projekt |
-| `--json` | JSON-Ausgabe (`{ nodes, edges }`) |
-| `--order` | Topologische Build-Reihenfolge |
+| `--project`, `-p` | Graph for a single project |
+| `--json` | JSON output (`{ nodes, edges }`) |
+| `--order` | Topological build order |
 
 ### `generate`
 
-Generiert neue Apps oder Libs aus Templates.
+Generates new apps or libs from templates.
 
 ```bash
-./mono generate app my-app                        # Interaktive Template-Auswahl
-./mono generate app my-app --template bun          # App mit Bun-Template
-./mono generate app backend/my-api --template bun  # Verschachtelter Pfad
-./mono generate lib shared-utils --template bun    # Neue Lib erstellen
+./mono generate app my-app                        # Interactive template selection
+./mono generate app my-app --template bun          # App with Bun template
+./mono generate app backend/my-api --template bun  # Nested path
+./mono generate lib shared-utils --template bun    # New lib
 ./mono generate lib shared/config --template minimal
 ```
 
-**Name-Format:**
+**Name format:**
 - `app-name` → `apps/app-name/`
 - `subfolder/app-name` → `apps/subfolder/app-name/`
 
-**Verfügbare Templates:**
+**Available templates:**
 
-| Template | Beschreibung |
+| Template | Description |
 |----------|-------------|
-| `empty` | Leeres Verzeichnis |
-| `minimal` | Nur README.md |
-| `bun` | Bun-Projekt mit TypeScript |
+| `empty` | Empty directory |
+| `minimal` | Only README.md |
+| `bun` | Bun project with TypeScript |
 
-Wird kein `--template` angegeben, erfolgt eine interaktive Auswahl.
+If no `--template` is given, an interactive selection is made.
 
-**Template-Variablen:**
+**Template variables:**
 
-| Variable | App-Templates | Lib-Templates |
+| Variable | App templates | Lib templates |
 |----------|--------------|--------------|
 | `{{APP_NAME}}` / `{{LIB_NAME}}` | Basename | Basename |
-| `{{APP_PATH}}` / `{{LIB_PATH}}` | Vollständiger Pfad | Vollständiger Pfad |
+| `{{APP_PATH}}` / `{{LIB_PATH}}` | Full path | Full path |
 
-**Eigene Templates erstellen:** Neuen Ordner unter `.mono/templates/app/<name>/` oder `.mono/templates/lib/<name>/` anlegen. Dateien können die obigen Platzhalter verwenden. Eine `.template`-Datei (Zeile 1 = Beschreibung, `init: <command>` = Post-Init-Befehl) wird als Metadatei genutzt und nicht kopiert.
+**Create your own templates:** Create a new folder under `.mono/templates/app/<name>/` or `.mono/templates/lib/<name>/`. Files can use the above placeholders. A `.template` file (Line 1 = Description, `init: <command>` = Post-init command) is used as metadata and not copied.
 
 ### `changed`
 
-Erkennt welche Apps und Libs sich seit dem letzten Deploy geändert haben.
+Detects which apps and libs have changed since the last deploy.
 
 ```bash
-./mono changed                        # Alle Änderungen seit deploy/latest
-./mono changed --apps                 # Nur geänderte Apps
-./mono changed --libs                 # Nur geänderte Libs
-./mono changed --json                 # JSON-Ausgabe für CI/CD
-./mono changed --quiet                # Nur Pfade (eine pro Zeile)
-./mono changed --ref main~5           # Vergleich mit beliebiger Git-Ref
+./mono changed                        # All changes since deploy/latest
+./mono changed --apps                 # Only changed apps
+./mono changed --libs                 # Only changed libs
+./mono changed --json                 # JSON output for CI/CD
+./mono changed --quiet                # Only paths (one per line)
+./mono changed --ref main~5           # Comparison with any Git ref
 ```
 
-Die JSON-Ausgabe (`--json`) enthält die Deploy-Konfiguration:
+The JSON output (`--json`) contains the deploy configuration:
 
 ```json
 {
@@ -286,50 +288,50 @@ Die JSON-Ausgabe (`--json`) enthält die Deploy-Konfiguration:
 
 ### `deploy-mark`
 
-Markiert den aktuellen Commit als letzten Deploy-Stand.
+Marks the current commit as the latest deploy.
 
 ```bash
-./mono deploy-mark                    # Setzt deploy/latest auf HEAD
-./mono deploy-mark --push             # Setzt Tag und pusht zum Remote
-./mono deploy-mark --tag deploy/prod  # Eigener Tag-Name
+./mono deploy-mark                    # Sets deploy/latest on HEAD
+./mono deploy-mark --push             # Sets tag and pushes to remote
+./mono deploy-mark --tag deploy/prod  # Custom tag name
 ```
 
 ### `cache`
 
-Verwaltet den Task-Cache.
+Manages the task cache.
 
 ```bash
-./mono cache stats                    # Anzahl Einträge und Größe
-./mono cache list                     # Alle gecachten Targets auflisten
-./mono cache clear                    # Gesamten Cache löschen
+./mono cache stats                    # Number of entries and size
+./mono cache list                     # All cached targets
+./mono cache clear                    # Clears the entire cache
 ```
 
 ---
 
-## Dependency-Graph
+## Dependency Graph
 
-mono erkennt Abhängigkeiten zwischen Projekten auf zwei Wegen:
+mono detects dependencies between projects on two ways:
 
-1. **Manuell** – `"dependencies": ["lib-a"]` in der `project.json`
-2. **Auto-Detection** – Scannt `.ts/.tsx/.js/.jsx` Dateien nach `@libs/`-Imports
+1. **Manually** – `"dependencies": ["lib-a"]` in the `project.json`
+2. **Auto-detection** – Scans `.ts/.tsx/.js/.jsx` files for `@libs/`-imports
 
 ```typescript
-import { helper } from "@libs/shared-utils/helper";  // → Dependency auf shared-utils
+import { helper } from "@libs/shared-utils/helper";  // → Dependency on shared-utils
 ```
 
-Beide Quellen werden automatisch gemergt und dedupliziert. Die Auto-Detection ignoriert `node_modules/`, `dist/`, `.cache/` und ähnliche Verzeichnisse.
+Both sources are merged and deduplicated. The auto-detection ignores `node_modules/`, `dist/`, `.cache/` and similar directories.
 
-Der Graph wird genutzt für:
-- **Topologische Sortierung** – Dependencies werden immer zuerst ausgeführt
-- **Transitive Erkennung** – `affected` erkennt, wenn eine Lib-Änderung Apps betrifft
-- **Parallele Batches** – unabhängige Projekte können gleichzeitig ausgeführt werden
+The graph is used for:
+- **Topological sorting** – Dependencies are always executed first
+- **Transitive detection** – `affected` detects when a lib change affects apps
+- **Parallel batches** – Independent projects can be executed simultaneously
 
 ## Caching
 
-mono cached Target-Ergebnisse automatisch basierend auf einem Hash aus:
-- Dateien im Projektverzeichnis (ohne `node_modules`, `dist`, `.git`, etc.)
-- Command-String
-- Hashes der Cross-Project Dependencies
+mono caches target results automatically based on a hash of:
+- Files in the project directory (excluding `node_modules`, `dist`, `.git`, etc.)
+- Command string
+- Hashes of cross-project dependencies
 
 ```json
 "build": {
@@ -338,41 +340,41 @@ mono cached Target-Ergebnisse automatisch basierend auf einem Hash aus:
 }
 ```
 
-Mit `"outputs"` definierte Verzeichnisse werden im Cache gespeichert und bei Cache-Hit wiederhergestellt.
+With `"outputs"` defined directories are stored in the cache and restored on cache hit.
 
-**Caching deaktivieren:**
-- Pro Target: `"cache": false` in der `project.json`
-- Pro Aufruf: `--no-cache` Flag
+**Disable caching:**
+- Per target: `"cache": false` in the `project.json`
+- Per call: `--no-cache` flag
 
-Cache-Speicherort: `.mono/cache/`
+Cache storage: `.mono/cache/`
 
 ## CI/CD Workflows
 
-mono liefert GitHub Actions Workflows mit, die bei Installation und Update automatisch nach `.github/workflows/` kopiert werden.
+mono provides GitHub Actions workflows that are copied to `.github/workflows/` on installation and update.
 
 ### Checks (`checks.yml`)
 
-Läuft bei Pull Requests und Pushes auf `main`. Führt `mono affected --target test` aus – nur betroffene Projekte werden getestet.
+Runs on Pull Requests and Pushes to `main`. Executes `mono affected --target test` – only affected projects are tested.
 
 ### Deploy (`deploy.yml`)
 
-Läuft bei Pushes auf `main`. Der Workflow hat drei Schritte:
+Runs on Pushes to `main`. The workflow has three steps:
 
-1. **Affected Apps ermitteln** – `mono changed --json --apps` liefert alle geänderten Apps
-2. **Deploy pro App** – Für jede geänderte App wird parallel ein Job gestartet:
-   - `mono run <app>:deploy` führt das `deploy`-Target aus
-   - Bei `"strategy": "docker"` wird anschließend ein Docker Image gebaut und gepusht
-3. **Deploy markieren** – `mono deploy-mark --push` setzt den `deploy/latest` Tag
+1. **Affected apps determined** – `mono changed --json --apps` lists all changed apps
+2. **Deploy per app** – For each changed app, a parallel job is started:
+   - `mono run <app>:deploy` runs the `deploy` target
+   - With `"strategy": "docker"` builds and pushes a Docker image
+3. **Deploy mark** – `mono deploy-mark --push` sets the `deploy/latest` tag
 
-Die Deploy-Strategie wird über `deploy.strategy` in der `project.json` gesteuert:
+The deploy strategy is controlled by `deploy.strategy` in the `project.json`:
 
-| Strategy | Verhalten |
+| Strategy | Behavior |
 |----------|----------|
-| `docker` | `deploy`-Target ausführen, dann Docker Image bauen & in die Container Registry pushen |
-| `bun` / andere | Nur `deploy`-Target ausführen, kein Docker Build |
-| `none` | Kein Deploy |
+| `docker` | Run the `deploy` target, then build and push a Docker image |
+| `bun` / other | Only run the `deploy` target, no Docker build |
+| `none` | No deploy |
 
-**Beispiel mit Docker:**
+**Example with Docker:**
 
 ```json
 {
@@ -390,9 +392,9 @@ Die Deploy-Strategie wird über `deploy.strategy` in der `project.json` gesteuer
 }
 ```
 
-Das `deploy`-Target baut die App (z.B. nach `dist/`), danach wird das `Dockerfile` im App-Verzeichnis genutzt, um das Image zu bauen. Das Image wird unter `ghcr.io/<owner>/<repo>/<app-name>` mit den Tags `latest` und dem Git-SHA veröffentlicht.
+The `deploy` target builds the app (e.g. after `dist/`), then uses the `Dockerfile` in the app directory to build the image. The image is published under `ghcr.io/<owner>/<repo>/<app-name>` with tags `latest` and the Git-SHA.
 
-**Beispiel ohne Docker:**
+**Example without Docker:**
 
 ```json
 {
@@ -410,59 +412,59 @@ Das `deploy`-Target baut die App (z.B. nach `dist/`), danach wird das `Dockerfil
 }
 ```
 
-Hier wird nur das `deploy`-Target ausgeführt – ohne Docker Build.
+Here, only the `deploy` target is executed – without Docker build.
 
-**Registry anpassen:** Die `REGISTRY` Variable im Workflow kann geändert werden, um z.B. AWS ECR oder eine andere Registry zu verwenden.
+**Registry customization:** The `REGISTRY` variable in the workflow can be changed to use, e.g., AWS ECR or another registry.
 
-## Voraussetzungen
+## Prerequisites
 
-- **Bash** (3.2+, auf macOS vorinstalliert)
+- **Bash** (3.2+, installed on macOS)
 - **Git**
-- Standard-Unix-Tools (`grep`, `sed`, `find`, `shasum`, `curl`, ...)
+- Standard Unix tools (`grep`, `sed`, `find`, `shasum`, `curl`, ...)
 
-## Eigene Commands erstellen
+## Create your own commands
 
-Erstelle eine neue Datei unter `.mono/commands/<name>.sh`:
+Create a new file under `.mono/commands/<name>.sh`:
 
 ```bash
 #!/usr/bin/env bash
-# description: Kurze Beschreibung des Commands
+# description: Short description of the command
 
-echo "Mein neuer Command"
+echo "My new command"
 ```
 
-Der Command ist sofort über `mono <name>` aufrufbar. Die `# description:`-Zeile erscheint in `mono help`.
+The command is immediately callable as `mono <name>`. The `# description:` line appears in `mono help`.
 
-Die erste Zeile mit `# description:` wird automatisch in `mono help` angezeigt.
+The first line with `# description:` is automatically displayed in `mono help`.
 
-Im Command stehen folgende Variablen zur Verfügung:
+In the command, the following variables are available:
 
-- `MONO_ROOT` – Absoluter Pfad zum Repository-Root
-- `MONO_DIR` – Absoluter Pfad zu `.mono/`
+- `MONO_ROOT` – Absolute path to the repository root
+- `MONO_DIR` – Absolute path to `.mono/`
 
-## Schnellstart
+## Quick start
 
 ```bash
-# 1. Neues Projekt anlegen
+# 1. Create a new project
 mkdir my-project && cd my-project
 git init
 
-# 2. mono CLI installieren
+# 2. Install the mono CLI
 curl -fsSL https://raw.githubusercontent.com/codelabrx/monorepo/main/install.sh | bash
 
-# 3. Erste App erstellen
+# 3. Create the first app
 ./mono generate app my-api --template bun
 
-# 4. App starten
+# 4. Start the app
 ./mono run my-api:dev
 ```
 
-3. CLI ausführbar machen:
+3. Make the CLI executable:
    ```bash
    chmod +x mono
    ```
 
-4. Apps und Libs nach Bedarf anlegen:
+4. Create apps and libs as needed:
    ```bash
    mkdir -p apps/<app-name>
    mkdir -p libs/<lib-name>
