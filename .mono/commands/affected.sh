@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # description: Führt ein Target nur in geänderten Projekten aus
 
+# Graph-Library laden
+source "${MONO_DIR}/lib/graph.sh"
+
 DEPLOY_TAG="${MONO_DEPLOY_TAG:-deploy/latest}"
 
 # ─── Help ───────────────────────────────────────────────────────────────────
@@ -21,6 +24,10 @@ affected::help() {
   echo "  --dry-run             Zeigt was ausgeführt würde"
   echo "  --continue-on-error   Bei Fehler weitermachen"
   echo "  --help, -h            Diese Hilfe anzeigen"
+  echo ""
+  echo -e "${BOLD}Transitive Abhängigkeiten:${NC}"
+  echo "  Wenn sich eine Lib ändert, werden alle Projekte die"
+  echo "  (direkt oder transitiv) davon abhängen als betroffen erkannt."
   echo ""
   echo -e "${BOLD}Beispiele:${NC}"
   echo "  mono affected --target test              # test in geänderten Projekten"
@@ -77,8 +84,8 @@ affected::find_project_root() {
   return 1
 }
 
-# ─── Geänderte Projekte extrahieren ─────────────────────────────────────────
-affected::get_changed_projects() {
+# ─── Direkt geänderte Projekte extrahieren ──────────────────────────────────
+affected::get_directly_changed() {
   local filter="$1"
   local -a files=()
 
@@ -89,39 +96,27 @@ affected::get_changed_projects() {
   local projects=""
 
   for file in "${files[@]}"; do
-    local project_path=""
-
     case "${file}" in
       apps/*)
         [[ "${filter}" == "libs" ]] && continue
         local rel="${file#apps/}"
         [[ "${rel}" != */* ]] && continue
-        project_path="$(affected::find_project_root "apps" "${rel}")" || continue
+        local proj
+        proj="$(affected::find_project_root "apps" "${rel}")" || continue
+        projects="${projects}${proj}"$'\n'
         ;;
       libs/*)
         [[ "${filter}" == "apps" ]] && continue
         local rel="${file#libs/}"
         [[ "${rel}" != */* ]] && continue
-        project_path="$(affected::find_project_root "libs" "${rel}")" || continue
-        ;;
-      *)
-        continue
+        local proj
+        proj="$(affected::find_project_root "libs" "${rel}")" || continue
+        projects="${projects}${proj}"$'\n'
         ;;
     esac
-
-    if [[ -n "${project_path}" ]]; then
-      projects="${projects}${project_path}"$'\n'
-    fi
   done
 
   echo "${projects}" | grep -v '^$' | sort -u
-}
-
-# ─── JSON-Feld lesen ──────────────────────────────────────────────────────
-affected::json_field() {
-  local file="$1"
-  local field="$2"
-  sed -n 's/.*"'"${field}"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${file}" | head -1
 }
 
 # ─── Prüfen ob Target existiert ───────────────────────────────────────────
@@ -179,7 +174,7 @@ affected::execute_with_deps() {
   fi
 
   local proj_name
-  proj_name="$(affected::json_field "${project_file}" "name")"
+  proj_name="$(graph::json_field "${project_file}" "name")"
   [[ -z "${proj_name}" ]] && proj_name="$(basename "${project_dir}")"
 
   mono::log "${BOLD}${proj_name}:${target}${NC} → ${command}"
@@ -250,7 +245,10 @@ affected::run() {
   base_sha="$(git -C "${MONO_ROOT}" rev-parse --short "${base_ref}")"
   head_sha="$(git -C "${MONO_ROOT}" rev-parse --short HEAD)"
 
-  # ─── Geänderte Projekte ermitteln ───────────────────────────────────────
+  # ─── Graph aufbauen ─────────────────────────────────────────────────────
+  graph::build
+
+  # ─── Direkt geänderte Projekte ermitteln ─────────────────────────────────
   local changed_files
   changed_files="$(affected::get_changed_files "${base_ref}")"
 
@@ -260,10 +258,38 @@ affected::run() {
     return 0
   fi
 
-  local changed_projects
-  changed_projects="$(echo "${changed_files}" | affected::get_changed_projects "${filter}")"
+  local directly_changed
+  directly_changed="$(echo "${changed_files}" | affected::get_directly_changed "${filter}")"
 
-  if [[ -z "${changed_projects}" ]]; then
+  # ─── Transitive Dependents hinzufügen ───────────────────────────────────
+  local all_affected="${directly_changed}"
+
+  while IFS= read -r proj; do
+    [[ -z "${proj}" ]] && continue
+    local dependents
+    dependents="$(graph::transitive_dependents "${proj}" "")"
+    if [[ -n "${dependents}" ]]; then
+      all_affected="${all_affected}"$'\n'"${dependents}"
+    fi
+  done <<< "${directly_changed}"
+
+  # Deduplizieren und sortieren
+  all_affected="$(echo "${all_affected}" | grep -v '^$' | sort -u)"
+
+  # Filter nochmal anwenden (transitive könnten Apps enthalten bei --libs Filter)
+  if [[ "${filter}" != "all" ]]; then
+    local filtered=""
+    while IFS= read -r proj; do
+      [[ -z "${proj}" ]] && continue
+      case "${filter}" in
+        apps) [[ "${proj}" == apps/* ]] && filtered="${filtered}${proj}"$'\n' ;;
+        libs) [[ "${proj}" == libs/* ]] && filtered="${filtered}${proj}"$'\n' ;;
+      esac
+    done <<< "${all_affected}"
+    all_affected="$(echo "${filtered}" | grep -v '^$')"
+  fi
+
+  if [[ -z "${all_affected}" ]]; then
     echo ""
     mono::log "Keine betroffenen Projekte seit ${BOLD}${base_ref}${NC} (${base_sha})"
     return 0
@@ -280,51 +306,110 @@ affected::run() {
     else
       skipped_projects+=("${proj}")
     fi
-  done <<< "${changed_projects}"
+  done <<< "${all_affected}"
 
   if [[ ${#matching_projects[@]} -eq 0 ]]; then
     echo ""
-    mono::log "Keine geänderten Projekte mit Target ${BOLD}${target}${NC}"
+    mono::log "Keine betroffenen Projekte mit Target ${BOLD}${target}${NC}"
     return 0
   fi
+
+  # ─── Topologische Sortierung ───────────────────────────────────────────
+  local matching_list=""
+  for proj in "${matching_projects[@]}"; do
+    matching_list="${matching_list}${proj}"$'\n'
+  done
+
+  local sorted_projects
+  sorted_projects="$(graph::topo_sort "${matching_list}")" || return 1
+
+  local -a ordered_projects=()
+  while IFS= read -r proj; do
+    [[ -n "${proj}" ]] && ordered_projects+=("${proj}")
+  done <<< "${sorted_projects}"
+
+  # ─── Direkt vs. transitiv markieren ────────────────────────────────────
+  local directly_changed_list=",$(echo "${directly_changed}" | tr '\n' ','),"
 
   # ─── Ausgabe ──────────────────────────────────────────────────────────
   echo ""
   mono::log "Änderungen: ${BOLD}${base_ref}${NC} (${base_sha}) → HEAD (${head_sha})"
-  mono::log "Target ${BOLD}${target}${NC} in ${#matching_projects[@]} geänderten Projekt(en)"
+
+  # Zähle direkte und transitive
+  local direct_count=0 transitive_count=0
+  for proj in "${ordered_projects[@]}"; do
+    if [[ "${directly_changed_list}" == *",${proj},"* ]]; then
+      direct_count=$((direct_count + 1))
+    else
+      transitive_count=$((transitive_count + 1))
+    fi
+  done
+
+  local count_info="${direct_count} direkt"
+  [[ ${transitive_count} -gt 0 ]] && count_info="${count_info}, ${transitive_count} transitiv"
+  mono::log "Target ${BOLD}${target}${NC} in ${#ordered_projects[@]} Projekt(en) (${count_info})"
 
   if [[ ${#skipped_projects[@]} -gt 0 ]]; then
-    mono::warn "${#skipped_projects[@]} geänderte(s) Projekt(e) übersprungen (Target nicht vorhanden)"
+    mono::warn "${#skipped_projects[@]} betroffene(s) Projekt(e) übersprungen (Target nicht vorhanden)"
   fi
 
   if [[ "${dry_run}" == true ]]; then
     echo ""
-    echo -e "${BOLD}Ausführungsplan:${NC}"
-    for proj in "${matching_projects[@]}"; do
+    echo -e "${BOLD}Ausführungsplan (Reihenfolge):${NC}"
+    local i=1
+    for proj in "${ordered_projects[@]}"; do
       local name
-      name="$(affected::json_field "${MONO_ROOT}/${proj}/project.json" "name")"
+      name="$(graph::name_of "${proj}")"
       [[ -z "${name}" ]] && name="$(basename "${proj}")"
-      echo -e "  ${CYAN}${name}${NC}:${target}  (${proj})"
+
+      local marker=""
+      if [[ "${directly_changed_list}" == *",${proj},"* ]]; then
+        marker=" ${GREEN}(geändert)${NC}"
+      else
+        marker=" ${YELLOW}(transitiv)${NC}"
+      fi
+
+      local deps
+      deps="$(graph::deps_of "${proj}")"
+      local dep_str=""
+      if [[ -n "${deps}" ]]; then
+        local dep_names=""
+        while IFS= read -r d; do
+          [[ -z "${d}" ]] && continue
+          local dn
+          dn="$(graph::name_of "${d}")"
+          dep_names="${dep_names:+${dep_names}, }${dn}"
+        done <<< "${deps}"
+        dep_str=" ← ${dep_names}"
+      fi
+
+      echo -e "  ${BOLD}${i}.${NC} ${CYAN}${name}${NC}:${target}${marker}${dep_str}"
+      ((i++))
     done
     echo ""
     return 0
   fi
 
   # ─── Ausführung ──────────────────────────────────────────────────────
-  local total=${#matching_projects[@]}
+  local total=${#ordered_projects[@]}
   local current=0
   local failed=0
   local -a failed_projects=()
 
-  for proj in "${matching_projects[@]}"; do
+  for proj in "${ordered_projects[@]}"; do
     ((current++))
 
     local name
-    name="$(affected::json_field "${MONO_ROOT}/${proj}/project.json" "name")"
+    name="$(graph::name_of "${proj}")"
     [[ -z "${name}" ]] && name="$(basename "${proj}")"
 
+    local marker=""
+    if [[ "${directly_changed_list}" != *",${proj},"* ]]; then
+      marker=" ${YELLOW}(transitiv)${NC}"
+    fi
+
     echo ""
-    echo -e "${BOLD}━━━ [${current}/${total}] ${CYAN}${name}${NC}${BOLD}:${target} ━━━${NC}"
+    echo -e "${BOLD}━━━ [${current}/${total}] ${CYAN}${name}${NC}${BOLD}:${target}${marker} ━━━${NC}"
 
     affected::execute_with_deps "${proj}" "${target}" "${skip_deps}" "" || {
       local exit_code=$?
@@ -347,7 +432,7 @@ affected::run() {
   echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
   if [[ ${failed} -eq 0 ]]; then
-    mono::log "Alle ${total} geänderten Projekt(e) erfolgreich ✓"
+    mono::log "Alle ${total} betroffenen Projekt(e) erfolgreich ✓"
   else
     mono::error "${failed} von ${total} Projekt(en) fehlgeschlagen:"
     for fp in "${failed_projects[@]}"; do

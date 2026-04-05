@@ -162,7 +162,7 @@ app::generate() {
       -e "s|{{APP_PATH}}|${name}|g" \
       "${file}" > "${dest}"
 
-    ((file_count++))
+    file_count=$((file_count + 1))
   done < <(find "${template_dir}" -type f -print0)
 
   echo ""

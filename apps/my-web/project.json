@@ -1,0 +1,17 @@
+{
+  "name": "my-web",
+  "type": "app",
+  "path": "apps/my-web",
+  "targets": {
+    "build": {
+      "command": "echo 'Building my-web...'"
+    },
+    "test": {
+      "command": "echo 'Testing my-web...'"
+    }
+  },
+  "deploy": {
+    "strategy": "static"
+  },
+  "dependencies": ["shared-utils"]
+}

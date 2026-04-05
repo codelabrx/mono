@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # description: Führt Targets aus der project.json einer App/Lib aus
 
+# Graph-Library laden
+source "${MONO_DIR}/lib/graph.sh"
+
 # ─── Help ───────────────────────────────────────────────────────────────────
 run::help() {
   echo ""
@@ -16,6 +19,7 @@ run::help() {
   echo ""
   echo -e "${BOLD}Optionen:${NC}"
   echo "  --skip-deps          dependsOn-Kette überspringen"
+  echo "  --skip-project-deps  Cross-Project Dependencies überspringen"
   echo "  --dry-run             Zeigt was ausgeführt würde, ohne es zu tun"
   echo "  --list                Alle Targets eines Projekts auflisten"
   echo "  --help, -h            Diese Hilfe anzeigen"
@@ -206,9 +210,51 @@ run::execute_target() {
   local skip_deps="$3"
   local dry_run="$4"
   local _executed="$5"  # Bereits ausgeführte Targets (komma-separiert)
+  local skip_project_deps="${6:-false}"
+  local _executed_projects="${7:-}"  # Bereits ausgeführte Projekte (komma-separiert)
 
   local project_file="${MONO_ROOT}/${project_dir}/project.json"
   local full_dir="${MONO_ROOT}/${project_dir}"
+
+  # ─── Cross-Project Dependencies zuerst ausführen ────────────────────────
+  if [[ "${skip_project_deps}" != "true" ]]; then
+    local proj_deps
+    proj_deps="$(graph::get_dependencies "${project_file}")"
+
+    if [[ -n "${proj_deps}" ]]; then
+      while IFS= read -r dep_name; do
+        [[ -z "${dep_name}" ]] && continue
+
+        # Bereits ausgeführtes Projekt überspringen
+        if [[ ",${_executed_projects}," == *",${dep_name},"* ]]; then
+          continue
+        fi
+
+        local dep_dir
+        dep_dir="$(graph::resolve_project "${dep_name}")" || {
+          mono::warn "Dependency ${BOLD}${dep_name}${NC} nicht gefunden – überspringe"
+          continue
+        }
+
+        local dep_project_file="${MONO_ROOT}/${dep_dir}/project.json"
+
+        # Prüfen ob das Target in der Dependency existiert
+        local dep_has_target
+        dep_has_target="$(sed -n '/"'"${target}"'"[[:space:]]*:[[:space:]]*{/,/}/p' "${dep_project_file}" | head -1)"
+
+        if [[ -n "${dep_has_target}" ]]; then
+          if [[ "${dry_run}" == "true" ]]; then
+            echo -e "  ${YELLOW}[dep]${NC} ${CYAN}${dep_name}:${target}${NC} (${dep_dir})"
+          else
+            mono::log "${YELLOW}[dep]${NC} ${BOLD}${dep_name}:${target}${NC}"
+          fi
+
+          run::execute_target "${dep_dir}" "${target}" "${skip_deps}" "${dry_run}" "" "${skip_project_deps}" "${_executed_projects}" || return 1
+          _executed_projects="${_executed_projects:+${_executed_projects},}${dep_name}"
+        fi
+      done <<< "${proj_deps}"
+    fi
+  fi
 
   # Prüfen ob Target bereits ausgeführt
   if [[ ",${_executed}," == *",${target},"* ]]; then
@@ -269,12 +315,14 @@ run::execute_target() {
 run::main() {
   local input=""
   local skip_deps=false
+  local skip_project_deps=false
   local dry_run=false
   local list_mode=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --skip-deps)  skip_deps=true; shift ;;
+      --skip-project-deps) skip_project_deps=true; shift ;;
       --dry-run)    dry_run=true; shift ;;
       --list)       list_mode=true; shift ;;
       --help|-h)    run::help; return 0 ;;
@@ -337,7 +385,7 @@ run::main() {
     echo ""
   fi
 
-  run::execute_target "${project_dir}" "${target}" "${skip_deps}" "${dry_run}" ""
+  run::execute_target "${project_dir}" "${target}" "${skip_deps}" "${dry_run}" "" "${skip_project_deps}" ""
 }
 
 # ─── Start ──────────────────────────────────────────────────────────────────

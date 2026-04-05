@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # description: Führt ein Target über mehrere Projekte aus
 
+# Graph-Library laden
+source "${MONO_DIR}/lib/graph.sh"
+
 # ─── Help ───────────────────────────────────────────────────────────────────
 run_many::help() {
   echo ""
@@ -19,6 +22,10 @@ run_many::help() {
   echo "  --continue-on-error   Bei Fehler weitermachen"
   echo "  --help, -h            Diese Hilfe anzeigen"
   echo ""
+  echo -e "${BOLD}Hinweis:${NC}"
+  echo "  Projekte werden in topologischer Reihenfolge ausgeführt"
+  echo "  (Dependencies zuerst, basierend auf project.json dependencies)."
+  echo ""
   echo -e "${BOLD}Beispiele:${NC}"
   echo "  mono run-many --target build            # build in allen Projekten"
   echo "  mono run-many --target test --apps      # test nur in Apps"
@@ -26,27 +33,6 @@ run_many::help() {
   echo "  mono run-many --target build --projects my-app,my-lib"
   echo "  mono run-many --target build --dry-run  # Zeigt Ausführungsplan"
   echo ""
-}
-
-# ─── Alle Projekte mit project.json finden ──────────────────────────────────
-run_many::find_all_projects() {
-  local filter="$1"  # "all", "apps", "libs"
-
-  local search_dirs=()
-  case "${filter}" in
-    apps) search_dirs=("${MONO_ROOT}/apps") ;;
-    libs) search_dirs=("${MONO_ROOT}/libs") ;;
-    *)    search_dirs=("${MONO_ROOT}/apps" "${MONO_ROOT}/libs") ;;
-  esac
-
-  for dir in "${search_dirs[@]}"; do
-    [[ -d "${dir}" ]] || continue
-    while IFS= read -r -d '' pjson; do
-      local proj_dir
-      proj_dir="$(dirname "${pjson}")"
-      echo "${proj_dir#"${MONO_ROOT}/"}"
-    done < <(find "${dir}" -name "project.json" -print0 2>/dev/null)
-  done | sort
 }
 
 # ─── Prüfen ob ein Target in einem Projekt existiert ───────────────────────
@@ -57,191 +43,9 @@ run_many::has_target() {
 
   [[ -f "${project_file}" ]] || return 1
 
-  # run.sh Funktionen nutzen (werden über den Dispatcher geladen)
   local block
   block="$(sed -n '/"'"${target}"'"[[:space:]]*:[[:space:]]*{/,/}/p' "${project_file}")"
   [[ -n "${block}" ]]
-}
-
-# ─── JSON-Feld lesen (standalone, kein run:: Prefix nötig) ─────────────────
-run_many::json_field() {
-  local file="$1"
-  local field="$2"
-  sed -n 's/.*"'"${field}"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${file}" | head -1
-}
-
-# ─── Hauptfunktion ─────────────────────────────────────────────────────────
-run_many::run() {
-  local target=""
-  local filter="all"
-  local skip_deps=false
-  local dry_run=false
-  local continue_on_error=false
-  local projects_filter=""
-
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --target|-t)  target="${2:-}"; shift 2 ;;
-      --projects)   projects_filter="${2:-}"; shift 2 ;;
-      --apps)       filter="apps"; shift ;;
-      --libs)       filter="libs"; shift ;;
-      --skip-deps)  skip_deps=true; shift ;;
-      --dry-run)    dry_run=true; shift ;;
-      --continue-on-error) continue_on_error=true; shift ;;
-      --help|-h)    run_many::help; return 0 ;;
-      *)
-        mono::error "Unbekannte Option: $1"
-        run_many::help
-        return 1
-        ;;
-    esac
-  done
-
-  if [[ -z "${target}" ]]; then
-    mono::error "Kein Target angegeben. Verwende --target <name>"
-    run_many::help
-    return 1
-  fi
-
-  # ─── Projekte ermitteln ─────────────────────────────────────────────────
-  local -a projects=()
-
-  if [[ -n "${projects_filter}" ]]; then
-    # Komma-separierte Liste auflösen
-    IFS=',' read -ra proj_names <<< "${projects_filter}"
-    for name in "${proj_names[@]}"; do
-      name="$(echo "${name}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-      # Projekt-Verzeichnis finden
-      local proj_dir=""
-      for base in apps libs; do
-        if [[ -f "${MONO_ROOT}/${base}/${name}/project.json" ]]; then
-          proj_dir="${base}/${name}"
-          break
-        fi
-      done
-      # Nach Name in project.json suchen
-      if [[ -z "${proj_dir}" ]]; then
-        while IFS= read -r -d '' pjson; do
-          local pname
-          pname="$(run_many::json_field "${pjson}" "name")"
-          if [[ "${pname}" == "${name}" ]]; then
-            local pdir
-            pdir="$(dirname "${pjson}")"
-            proj_dir="${pdir#"${MONO_ROOT}/"}"
-            break
-          fi
-        done < <(find "${MONO_ROOT}/apps" "${MONO_ROOT}/libs" -name "project.json" -print0 2>/dev/null)
-      fi
-
-      if [[ -z "${proj_dir}" ]]; then
-        mono::error "Projekt nicht gefunden: ${BOLD}${name}${NC}"
-        return 1
-      fi
-      projects+=("${proj_dir}")
-    done
-  else
-    while IFS= read -r proj; do
-      [[ -n "${proj}" ]] && projects+=("${proj}")
-    done < <(run_many::find_all_projects "${filter}")
-  fi
-
-  if [[ ${#projects[@]} -eq 0 ]]; then
-    mono::warn "Keine Projekte gefunden"
-    return 0
-  fi
-
-  # ─── Projekte filtern: nur die mit dem gewünschten Target ──────────────
-  local -a matching_projects=()
-  local -a skipped_projects=()
-
-  for proj in "${projects[@]}"; do
-    if run_many::has_target "${proj}" "${target}"; then
-      matching_projects+=("${proj}")
-    else
-      skipped_projects+=("${proj}")
-    fi
-  done
-
-  if [[ ${#matching_projects[@]} -eq 0 ]]; then
-    mono::warn "Kein Projekt hat das Target ${BOLD}${target}${NC}"
-    return 0
-  fi
-
-  # ─── Ausgabe ──────────────────────────────────────────────────────────
-  echo ""
-  mono::log "Target ${BOLD}${target}${NC} in ${#matching_projects[@]} Projekt(en)"
-
-  if [[ ${#skipped_projects[@]} -gt 0 ]]; then
-    mono::warn "${#skipped_projects[@]} Projekt(e) übersprungen (Target nicht vorhanden)"
-  fi
-
-  if [[ "${dry_run}" == true ]]; then
-    echo ""
-    echo -e "${BOLD}Ausführungsplan:${NC}"
-    for proj in "${matching_projects[@]}"; do
-      local name
-      name="$(run_many::json_field "${MONO_ROOT}/${proj}/project.json" "name")"
-      [[ -z "${name}" ]] && name="$(basename "${proj}")"
-      echo -e "  ${CYAN}${name}${NC}:${target}  (${proj})"
-    done
-    echo ""
-    return 0
-  fi
-
-  # ─── Ausführung ──────────────────────────────────────────────────────
-  local total=${#matching_projects[@]}
-  local current=0
-  local failed=0
-  local -a failed_projects=()
-
-  # run.sh laden um dessen Funktionen zu nutzen
-  source "${MONO_DIR}/commands/run.sh" --help >/dev/null 2>&1 || true
-
-  for proj in "${matching_projects[@]}"; do
-    ((current++))
-
-    local name
-    name="$(run_many::json_field "${MONO_ROOT}/${proj}/project.json" "name")"
-    [[ -z "${name}" ]] && name="$(basename "${proj}")"
-
-    echo ""
-    echo -e "${BOLD}━━━ [${current}/${total}] ${CYAN}${name}${NC}${BOLD}:${target} ━━━${NC}"
-
-    local project_file="${MONO_ROOT}/${proj}/project.json"
-    local full_dir="${MONO_ROOT}/${proj}"
-
-    # dependsOn auflösen und Command ausführen (inline, da run:: Funktionen evtl. nicht geladen)
-    run_many::execute_with_deps "${proj}" "${target}" "${skip_deps}" "" || {
-      local exit_code=$?
-      ((failed++))
-      failed_projects+=("${name}")
-
-      if [[ "${continue_on_error}" != true ]]; then
-        echo ""
-        mono::error "Abbruch nach Fehler in ${BOLD}${name}:${target}${NC}"
-        mono::error "${failed} von ${current} Projekt(en) fehlgeschlagen"
-        return ${exit_code}
-      fi
-
-      mono::warn "Fehler in ${BOLD}${name}:${target}${NC} – fahre fort"
-    }
-  done
-
-  # ─── Zusammenfassung ────────────────────────────────────────────────────
-  echo ""
-  echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-  if [[ ${failed} -eq 0 ]]; then
-    mono::log "Alle ${total} Projekt(e) erfolgreich ✓"
-  else
-    mono::error "${failed} von ${total} Projekt(en) fehlgeschlagen:"
-    for fp in "${failed_projects[@]}"; do
-      echo -e "  ${RED}✗${NC} ${fp}"
-    done
-  fi
-
-  echo ""
-  [[ ${failed} -eq 0 ]]
 }
 
 # ─── Target mit dependsOn ausführen ────────────────────────────────────────
@@ -290,7 +94,7 @@ run_many::execute_with_deps() {
 
   # Ausführen
   local proj_name
-  proj_name="$(run_many::json_field "${project_file}" "name")"
+  proj_name="$(graph::json_field "${project_file}" "name")"
   [[ -z "${proj_name}" ]] && proj_name="$(basename "${project_dir}")"
 
   mono::log "${BOLD}${proj_name}:${target}${NC} → ${command}"
@@ -305,6 +109,198 @@ run_many::execute_with_deps() {
 
   mono::log "Target ${BOLD}${target}${NC} abgeschlossen ✓"
   return 0
+}
+
+# ─── Hauptfunktion ─────────────────────────────────────────────────────────
+run_many::run() {
+  local target=""
+  local filter="all"
+  local skip_deps=false
+  local dry_run=false
+  local continue_on_error=false
+  local projects_filter=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --target|-t)  target="${2:-}"; shift 2 ;;
+      --projects)   projects_filter="${2:-}"; shift 2 ;;
+      --apps)       filter="apps"; shift ;;
+      --libs)       filter="libs"; shift ;;
+      --skip-deps)  skip_deps=true; shift ;;
+      --dry-run)    dry_run=true; shift ;;
+      --continue-on-error) continue_on_error=true; shift ;;
+      --help|-h)    run_many::help; return 0 ;;
+      *)
+        mono::error "Unbekannte Option: $1"
+        run_many::help
+        return 1
+        ;;
+    esac
+  done
+
+  if [[ -z "${target}" ]]; then
+    mono::error "Kein Target angegeben. Verwende --target <name>"
+    run_many::help
+    return 1
+  fi
+
+  # ─── Graph aufbauen ─────────────────────────────────────────────────────
+  graph::build
+
+  # ─── Projekte ermitteln ─────────────────────────────────────────────────
+  local -a projects=()
+
+  if [[ -n "${projects_filter}" ]]; then
+    IFS=',' read -ra proj_names <<< "${projects_filter}"
+    for name in "${proj_names[@]}"; do
+      name="$(echo "${name}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      local proj_dir
+      proj_dir="$(graph::resolve_project "${name}")" || {
+        mono::error "Projekt nicht gefunden: ${BOLD}${name}${NC}"
+        return 1
+      }
+      projects+=("${proj_dir}")
+    done
+  else
+    while IFS= read -r proj; do
+      [[ -n "${proj}" ]] && projects+=("${proj}")
+    done < <(graph::find_all_projects)
+
+    # Filter anwenden
+    if [[ "${filter}" != "all" ]]; then
+      local -a filtered=()
+      for proj in "${projects[@]}"; do
+        case "${filter}" in
+          apps) [[ "${proj}" == apps/* ]] && filtered+=("${proj}") ;;
+          libs) [[ "${proj}" == libs/* ]] && filtered+=("${proj}") ;;
+        esac
+      done
+      projects=("${filtered[@]}")
+    fi
+  fi
+
+  if [[ ${#projects[@]} -eq 0 ]]; then
+    mono::warn "Keine Projekte gefunden"
+    return 0
+  fi
+
+  # ─── Projekte filtern: nur die mit dem gewünschten Target ──────────────
+  local -a matching_projects=()
+  local -a skipped_projects=()
+
+  for proj in "${projects[@]}"; do
+    if run_many::has_target "${proj}" "${target}"; then
+      matching_projects+=("${proj}")
+    else
+      skipped_projects+=("${proj}")
+    fi
+  done
+
+  if [[ ${#matching_projects[@]} -eq 0 ]]; then
+    mono::warn "Kein Projekt hat das Target ${BOLD}${target}${NC}"
+    return 0
+  fi
+
+  # ─── Topologische Sortierung ───────────────────────────────────────────
+  local matching_list=""
+  for proj in "${matching_projects[@]}"; do
+    matching_list="${matching_list}${proj}"$'\n'
+  done
+
+  local sorted_projects
+  sorted_projects="$(graph::topo_sort "${matching_list}")" || return 1
+
+  # Sortierte Liste in Array konvertieren
+  local -a ordered_projects=()
+  while IFS= read -r proj; do
+    [[ -n "${proj}" ]] && ordered_projects+=("${proj}")
+  done <<< "${sorted_projects}"
+
+  # ─── Ausgabe ──────────────────────────────────────────────────────────
+  echo ""
+  mono::log "Target ${BOLD}${target}${NC} in ${#ordered_projects[@]} Projekt(en) (topologisch sortiert)"
+
+  if [[ ${#skipped_projects[@]} -gt 0 ]]; then
+    mono::warn "${#skipped_projects[@]} Projekt(e) übersprungen (Target nicht vorhanden)"
+  fi
+
+  if [[ "${dry_run}" == true ]]; then
+    echo ""
+    echo -e "${BOLD}Ausführungsplan (Reihenfolge):${NC}"
+    local i=1
+    for proj in "${ordered_projects[@]}"; do
+      local name
+      name="$(graph::name_of "${proj}")"
+      [[ -z "${name}" ]] && name="$(basename "${proj}")"
+
+      local deps
+      deps="$(graph::deps_of "${proj}")"
+      local dep_str=""
+      if [[ -n "${deps}" ]]; then
+        local dep_names=""
+        while IFS= read -r d; do
+          [[ -z "${d}" ]] && continue
+          local dn
+          dn="$(graph::name_of "${d}")"
+          dep_names="${dep_names:+${dep_names}, }${dn}"
+        done <<< "${deps}"
+        dep_str=" ${YELLOW}← ${dep_names}${NC}"
+      fi
+
+      echo -e "  ${BOLD}${i}.${NC} ${CYAN}${name}${NC}:${target}  (${proj})${dep_str}"
+      ((i++))
+    done
+    echo ""
+    return 0
+  fi
+
+  # ─── Ausführung ──────────────────────────────────────────────────────
+  local total=${#ordered_projects[@]}
+  local current=0
+  local failed=0
+  local -a failed_projects=()
+
+  for proj in "${ordered_projects[@]}"; do
+    ((current++))
+
+    local name
+    name="$(graph::name_of "${proj}")"
+    [[ -z "${name}" ]] && name="$(basename "${proj}")"
+
+    echo ""
+    echo -e "${BOLD}━━━ [${current}/${total}] ${CYAN}${name}${NC}${BOLD}:${target} ━━━${NC}"
+
+    run_many::execute_with_deps "${proj}" "${target}" "${skip_deps}" "" || {
+      local exit_code=$?
+      ((failed++))
+      failed_projects+=("${name}")
+
+      if [[ "${continue_on_error}" != true ]]; then
+        echo ""
+        mono::error "Abbruch nach Fehler in ${BOLD}${name}:${target}${NC}"
+        mono::error "${failed} von ${current} Projekt(en) fehlgeschlagen"
+        return ${exit_code}
+      fi
+
+      mono::warn "Fehler in ${BOLD}${name}:${target}${NC} – fahre fort"
+    }
+  done
+
+  # ─── Zusammenfassung ────────────────────────────────────────────────────
+  echo ""
+  echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+  if [[ ${failed} -eq 0 ]]; then
+    mono::log "Alle ${total} Projekt(e) erfolgreich ✓"
+  else
+    mono::error "${failed} von ${total} Projekt(en) fehlgeschlagen:"
+    for fp in "${failed_projects[@]}"; do
+      echo -e "  ${RED}✗${NC} ${fp}"
+    done
+  fi
+
+  echo ""
+  [[ ${failed} -eq 0 ]]
 }
 
 # ─── Start ──────────────────────────────────────────────────────────────────

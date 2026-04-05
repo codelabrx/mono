@@ -267,11 +267,11 @@ changed::output_pretty() {
 
     local icon=""
     if [[ "${project}" == apps/* ]]; then
-      icon="📦"; ((app_count++))
+      icon="📦"; app_count=$((app_count + 1))
     elif [[ "${project}" == libs/* ]]; then
-      icon="📚"; ((lib_count++))
+      icon="📚"; lib_count=$((lib_count + 1))
     else
-      icon="📄"; ((other_count++))
+      icon="📄"; other_count=$((other_count + 1))
     fi
 
     local name strategy has_project_json
