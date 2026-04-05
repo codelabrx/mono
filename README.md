@@ -18,19 +18,19 @@ Pull requests or issues may not be reviewed.
 **In an existing project:**
 
 ```bash
-curl -fsSL https://github.com/codelabrx/mono/blob/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/codelabrx/mono/main/install.sh | bash
 ```
 
 **Install a specific version:**
 
 ```bash
-curl -fsSL https://github.com/codelabrx/mono/blob/main/install.sh | bash -s -- v1.0.0
+curl -fsSL https://raw.githubusercontent.com/codelabrx/mono/main/install.sh | bash -s -- v1.0.0
 ```
 
 **Install to a different directory:**
 
 ```bash
-curl -fsSL https://github.com/codelabrx/mono/blob/main/install.sh | bash -s -- --dir /path/to/project
+curl -fsSL https://raw.githubusercontent.com/codelabrx/mono/main/install.sh | bash -s -- --dir /path/to/project
 ```
 
 ## Update
@@ -459,7 +459,7 @@ mkdir my-project && cd my-project
 git init
 
 # 2. Install the mono CLI
-curl -fsSL https://raw.githubusercontent.com/codelabrx/monorepo/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/codelabrx/mono/main/install.sh | bash
 
 # 3. Create the first app
 ./mono generate app my-api --template bun

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # description: mono CLI auf die neueste Version aktualisieren
 
-MONO_REPO="${MONO_UPDATE_REPO:-codelabrx/monorepo}"
+MONO_REPO="${MONO_UPDATE_REPO:-codelabrx/mono}"
 MONO_VERSION_FILE="${MONO_DIR}/VERSION"
 
 # ─── Help ───────────────────────────────────────────────────────────────────
@@ -156,7 +156,7 @@ update::install() {
 
   # Extrahiertes Verzeichnis finden
   local extracted_dir
-  extracted_dir="$(find "${tmp_dir}" -maxdepth 1 -type d -name 'monorepo-*' | head -1)"
+  extracted_dir="$(find "${tmp_dir}" -maxdepth 1 -type d -name 'mono-*' | head -1)"
 
   if [[ -z "${extracted_dir}" || ! -d "${extracted_dir}/.mono" ]]; then
     mono::error "Ungültiges Archiv: .mono Verzeichnis nicht gefunden"

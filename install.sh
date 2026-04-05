@@ -4,9 +4,9 @@ set -euo pipefail
 # ─── mono CLI Installer ────────────────────────────────────────────────────
 #
 # Verwendung:
-#   curl -fsSL https://raw.githubusercontent.com/codelabrx/monorepo/main/install.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/codelabrx/monorepo/main/install.sh | bash -s -- v1.0.0
-#   curl -fsSL https://raw.githubusercontent.com/codelabrx/monorepo/main/install.sh | bash -s -- --dir /path/to/project
+#   curl -fsSL https://raw.githubusercontent.com/codelabrx/mono/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/codelabrx/mono/main/install.sh | bash -s -- v1.0.0
+#   curl -fsSL https://raw.githubusercontent.com/codelabrx/mono/main/install.sh | bash -s -- --dir /path/to/project
 #
 # Was passiert:
 #   1. Lädt die angegebene (oder neueste) Version von GitHub herunter
@@ -14,7 +14,7 @@ set -euo pipefail
 #   3. Fertig – mono ist sofort einsatzbereit
 #
 
-MONO_REPO="codelabrx/monorepo"
+MONO_REPO="codelabrx/mono"
 
 # ─── Farben ─────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -107,7 +107,7 @@ install() {
 
   # Extrahiertes Verzeichnis finden
   local extracted_dir
-  extracted_dir="$(find "${tmp_dir}" -maxdepth 1 -type d -name 'monorepo-*' | head -1)"
+  extracted_dir="$(find "${tmp_dir}" -maxdepth 1 -type d -name 'mono-*' | head -1)"
 
   if [[ -z "${extracted_dir}" || ! -d "${extracted_dir}/.mono" ]]; then
     error "Ungültiges Archiv: .mono Verzeichnis nicht gefunden"
