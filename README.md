@@ -18,19 +18,19 @@ Pull requests or issues may not be reviewed.
 **In an existing project:**
 
 ```bash
-curl -fsSL https://github.com/codelabrx/monorepo/blob/main/install.sh | bash
+curl -fsSL https://github.com/codelabrx/mono/blob/main/install.sh | bash
 ```
 
 **Install a specific version:**
 
 ```bash
-curl -fsSL https://github.com/codelabrx/monorepo/blob/main/install.sh | bash -s -- v1.0.0
+curl -fsSL https://github.com/codelabrx/mono/blob/main/install.sh | bash -s -- v1.0.0
 ```
 
 **Install to a different directory:**
 
 ```bash
-curl -fsSL https://github.com/codelabrx/monorepo/blob/main/install.sh | bash -s -- --dir /path/to/project
+curl -fsSL https://github.com/codelabrx/mono/blob/main/install.sh | bash -s -- --dir /path/to/project
 ```
 
 ## Update
