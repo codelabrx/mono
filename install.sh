@@ -132,9 +132,93 @@ install() {
   # Cache-Verzeichnis erstellen
   mkdir -p "${target_dir}/.mono/cache"
 
+  # GitHub Workflows installieren
+  if [[ -d "${target_dir}/.mono/workflows" ]]; then
+    mkdir -p "${target_dir}/.github/workflows"
+    for wf in "${target_dir}/.mono/workflows/"*.yml; do
+      [[ -f "${wf}" ]] || continue
+      cp "${wf}" "${target_dir}/.github/workflows/"
+    done
+    log "GitHub Workflows installiert"
+  fi
+
   # ─── Basis-Dateien erstellen (falls nicht vorhanden) ────────────────────
-  # apps/ und libs/ Verzeichnisse
   mkdir -p "${target_dir}/apps" "${target_dir}/libs"
+
+  # package.json (Bun/Node Workspaces)
+  if [[ ! -f "${target_dir}/package.json" ]]; then
+    local project_name
+    project_name="$(basename "${target_dir}")"
+    cat > "${target_dir}/package.json" << EOF
+{
+  "name": "${project_name}",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ]
+}
+EOF
+    log "package.json erstellt"
+  fi
+
+  # bunfig.toml
+  if [[ ! -f "${target_dir}/bunfig.toml" ]]; then
+    cat > "${target_dir}/bunfig.toml" << 'EOF'
+[install]
+linker = "hoisted"
+linkWorkspacePackages = true
+EOF
+    log "bunfig.toml erstellt"
+  fi
+
+  # .gitignore
+  if [[ ! -f "${target_dir}/.gitignore" ]]; then
+    cat > "${target_dir}/.gitignore" << 'EOF'
+# dependencies (bun install)
+node_modules
+
+# lockfiles in Unterprojekten (Root bun.lock wird committed)
+apps/*/bun.lock
+apps/*/bun.lockb
+libs/*/bun.lock
+libs/*/bun.lockb
+
+# output
+out
+dist
+*.tgz
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+*.log
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+.mono/cache
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (macOS)
+.DS_Store
+EOF
+    log ".gitignore erstellt"
+  fi
 
   echo ""
   log "Installation abgeschlossen!"

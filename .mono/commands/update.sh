@@ -167,12 +167,22 @@ update::install() {
   mono::log "Aktualisiere Dateien..."
 
   # Core-Verzeichnisse ersetzen
-  for dir in bin lib commands templates; do
+  for dir in bin lib commands templates workflows; do
     if [[ -d "${extracted_dir}/.mono/${dir}" ]]; then
       rm -rf "${MONO_DIR}/${dir}"
       cp -R "${extracted_dir}/.mono/${dir}" "${MONO_DIR}/${dir}"
     fi
   done
+
+  # GitHub Workflows aktualisieren
+  if [[ -d "${MONO_DIR}/workflows" ]]; then
+    mkdir -p "${MONO_ROOT}/.github/workflows"
+    for wf in "${MONO_DIR}/workflows/"*.yml; do
+      [[ -f "${wf}" ]] || continue
+      cp "${wf}" "${MONO_ROOT}/.github/workflows/"
+    done
+    mono::log "GitHub Workflows aktualisiert"
+  fi
 
   # VERSION aktualisieren
   if [[ -f "${extracted_dir}/.mono/VERSION" ]]; then

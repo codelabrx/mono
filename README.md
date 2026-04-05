@@ -33,19 +33,24 @@ curl -fsSL https://raw.githubusercontent.com/codelabrx/monorepo/main/install.sh 
 
 Die aktuelle Version steht in `.mono/VERSION`. Beim Update werden `bin/`, `lib/`, `commands/` und `templates/` ersetzt – der Cache und eigene Konfigurationen bleiben erhalten.
 
-## Struktur
+## Was wird installiert?
+
+Der Installer richtet folgende Struktur im Zielverzeichnis ein:
 
 ```
 ├── mono              # CLI Wrapper
-├── install.sh        # Installer für neue Projekte
+├── package.json      # Workspace-Konfiguration (apps/*, libs/*)
+├── bunfig.toml       # Bun-Konfiguration
 ├── apps/             # Alle Applikationen
 ├── libs/             # Gemeinsam genutzte Bibliotheken
+├── .github/workflows/  # CI/CD Workflows (checks, deploy)
 └── .mono/
     ├── VERSION       # Aktuelle CLI-Version
     ├── bin/mono      # CLI Entry-Script
     ├── commands/     # Einzelne Commands (*.sh)
     ├── lib/          # Shared Libraries (graph.sh, cache.sh)
     ├── templates/    # Projekt-Templates (app/, lib/)
+    ├── workflows/    # Workflow-Quellen (werden nach .github/ kopiert)
     └── cache/        # Task-Cache (automatisch verwaltet)
 ```
 
@@ -341,6 +346,74 @@ Mit `"outputs"` definierte Verzeichnisse werden im Cache gespeichert und bei Cac
 
 Cache-Speicherort: `.mono/cache/`
 
+## CI/CD Workflows
+
+mono liefert GitHub Actions Workflows mit, die bei Installation und Update automatisch nach `.github/workflows/` kopiert werden.
+
+### Checks (`checks.yml`)
+
+Läuft bei Pull Requests und Pushes auf `main`. Führt `mono affected --target test` aus – nur betroffene Projekte werden getestet.
+
+### Deploy (`deploy.yml`)
+
+Läuft bei Pushes auf `main`. Der Workflow hat drei Schritte:
+
+1. **Affected Apps ermitteln** – `mono changed --json --apps` liefert alle geänderten Apps
+2. **Deploy pro App** – Für jede geänderte App wird parallel ein Job gestartet:
+   - `mono run <app>:deploy` führt das `deploy`-Target aus
+   - Bei `"strategy": "docker"` wird anschließend ein Docker Image gebaut und gepusht
+3. **Deploy markieren** – `mono deploy-mark --push` setzt den `deploy/latest` Tag
+
+Die Deploy-Strategie wird über `deploy.strategy` in der `project.json` gesteuert:
+
+| Strategy | Verhalten |
+|----------|----------|
+| `docker` | `deploy`-Target ausführen, dann Docker Image bauen & in die Container Registry pushen |
+| `bun` / andere | Nur `deploy`-Target ausführen, kein Docker Build |
+| `none` | Kein Deploy |
+
+**Beispiel mit Docker:**
+
+```json
+{
+  "name": "my-api",
+  "type": "app",
+  "targets": {
+    "deploy": {
+      "command": "bun build src/index.ts --outdir dist",
+      "dependsOn": ["install"]
+    }
+  },
+  "deploy": {
+    "strategy": "docker"
+  }
+}
+```
+
+Das `deploy`-Target baut die App (z.B. nach `dist/`), danach wird das `Dockerfile` im App-Verzeichnis genutzt, um das Image zu bauen. Das Image wird unter `ghcr.io/<owner>/<repo>/<app-name>` mit den Tags `latest` und dem Git-SHA veröffentlicht.
+
+**Beispiel ohne Docker:**
+
+```json
+{
+  "name": "my-frontend",
+  "type": "app",
+  "targets": {
+    "deploy": {
+      "command": "bun run build && cp -R dist/ /output/",
+      "dependsOn": ["install"]
+    }
+  },
+  "deploy": {
+    "strategy": "static"
+  }
+}
+```
+
+Hier wird nur das `deploy`-Target ausgeführt – ohne Docker Build.
+
+**Registry anpassen:** Die `REGISTRY` Variable im Workflow kann geändert werden, um z.B. AWS ECR oder eine andere Registry zu verwenden.
+
 ## Voraussetzungen
 
 - **Bash** (3.2+, auf macOS vorinstalliert)
@@ -367,18 +440,22 @@ Im Command stehen folgende Variablen zur Verfügung:
 - `MONO_ROOT` – Absoluter Pfad zum Repository-Root
 - `MONO_DIR` – Absoluter Pfad zu `.mono/`
 
-## Verwendung
+## Schnellstart
 
-1. Repository als Template nutzen oder klonen:
-   ```bash
-   git clone https://github.com/codelabrx/monorepo.git <projekt-name>
-   cd <projekt-name>
-   ```
+```bash
+# 1. Neues Projekt anlegen
+mkdir my-project && cd my-project
+git init
 
-2. Remote auf das neue Repository setzen:
-   ```bash
-   git remote set-url origin <neue-repo-url>
-   ```
+# 2. mono CLI installieren
+curl -fsSL https://raw.githubusercontent.com/codelabrx/monorepo/main/install.sh | bash
+
+# 3. Erste App erstellen
+./mono generate app my-api --template bun
+
+# 4. App starten
+./mono run my-api:dev
+```
 
 3. CLI ausführbar machen:
    ```bash
