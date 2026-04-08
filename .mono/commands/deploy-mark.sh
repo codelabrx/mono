@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# description: Setzt den Deploy-Tag auf den aktuellen Commit
+# description: Setzt die Deploy-Ref auf den aktuellen Commit
 
-DEPLOY_TAG="${MONO_DEPLOY_TAG:-deploy/latest}"
+DEPLOY_REF="${MONO_DEPLOY_REF:-deploy/latest}"
 
 deploy_mark::help() {
   echo ""
@@ -11,25 +11,25 @@ deploy_mark::help() {
   echo "  mono deploy-mark [optionen]"
   echo ""
   echo -e "${BOLD}Optionen:${NC}"
-  echo "  --tag <tag>         Eigenen Tag-Namen verwenden (Standard: ${DEPLOY_TAG})"
-  echo "  --push              Tag automatisch zum Remote pushen"
+  echo "  --ref <name>        Eigenen Ref-Namen verwenden (Standard: ${DEPLOY_REF})"
+  echo "  --push              Ref automatisch zum Remote pushen"
   echo "  --help, -h          Diese Hilfe anzeigen"
   echo ""
   echo -e "${BOLD}Beispiele:${NC}"
   echo "  mono deploy-mark                    # Setzt deploy/latest auf HEAD"
-  echo "  mono deploy-mark --push             # Setzt Tag und pusht zum Remote"
-  echo "  mono deploy-mark --tag deploy/prod  # Eigener Tag-Name"
+  echo "  mono deploy-mark --push             # Setzt Ref und pusht zum Remote"
+  echo "  mono deploy-mark --ref deploy/prod  # Eigener Ref-Name"
   echo ""
 }
 
 deploy_mark::run() {
-  local tag="${DEPLOY_TAG}"
+  local ref="${DEPLOY_REF}"
   local push=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --tag)
-        tag="${2:-}"
+      --ref|--tag)
+        ref="${2:-}"
         shift 2
         ;;
       --push)
@@ -48,27 +48,25 @@ deploy_mark::run() {
     esac
   done
 
+  local full_ref="refs/${ref}"
   local head_sha
   head_sha="$(git -C "${MONO_ROOT}" rev-parse --short HEAD)"
-  local head_full
-  head_full="$(git -C "${MONO_ROOT}" rev-parse HEAD)"
 
-  # Alten Tag entfernen falls vorhanden
-  if git -C "${MONO_ROOT}" rev-parse --verify "${tag}" &>/dev/null; then
+  # Alten Stand loggen falls vorhanden
+  if git -C "${MONO_ROOT}" rev-parse --verify "${full_ref}" &>/dev/null; then
     local old_sha
-    old_sha="$(git -C "${MONO_ROOT}" rev-parse --short "${tag}")"
-    git -C "${MONO_ROOT}" tag -d "${tag}" &>/dev/null
-    mono::log "Alter Tag ${BOLD}${tag}${NC} (${old_sha}) entfernt"
+    old_sha="$(git -C "${MONO_ROOT}" rev-parse --short "${full_ref}")"
+    mono::log "Alter Stand ${BOLD}${ref}${NC} (${old_sha}) wird aktualisiert"
   fi
 
-  # Neuen Tag setzen
-  git -C "${MONO_ROOT}" tag "${tag}" HEAD
-  mono::log "Tag ${BOLD}${tag}${NC} gesetzt auf ${BOLD}${head_sha}${NC}"
+  # Ref setzen/aktualisieren
+  git -C "${MONO_ROOT}" update-ref "${full_ref}" HEAD
+  mono::log "Ref ${BOLD}${ref}${NC} gesetzt auf ${BOLD}${head_sha}${NC}"
 
   # Optional pushen
   if [[ "${push}" == true ]]; then
-    git -C "${MONO_ROOT}" push origin "${tag}" --force 2>/dev/null
-    mono::log "Tag zum Remote gepusht"
+    git -C "${MONO_ROOT}" push origin "${full_ref}" --force 2>/dev/null
+    mono::log "Ref zum Remote gepusht"
   fi
 
   echo ""

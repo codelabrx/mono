@@ -17,9 +17,12 @@ jobs:
       has_apps: ${{ steps.changes.outputs.has_apps }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - name: Fetch Deploy Ref
+        run: git fetch origin refs/deploy/latest:refs/deploy/latest 2>/dev/null || true
 
       - name: Find Changed Apps
         id: changes
@@ -56,7 +59,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -94,12 +97,31 @@ jobs:
         if: matrix.deploy.strategy == 'docker'
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.path }}
+          context: .
+          file: ${{ matrix.path }}/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # ─── CapRover Deploy ───────────────────────────────────────────
+      - name: Resolve CapRover Secrets
+        if: matrix.deploy.strategy == 'docker'
+        id: caprover
+        run: |
+          APP_UPPER=$(echo "${{ matrix.name }}" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+          echo "app_name_key=CAPROVER_APP_NAME_${APP_UPPER}" >> "$GITHUB_OUTPUT"
+          echo "app_token_key=CAPROVER_APP_TOKEN_${APP_UPPER}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to CapRover
+        if: matrix.deploy.strategy == 'docker'
+        uses: caprover/deploy-from-github@v1.1.2
+        with:
+          server: "${{ secrets.CAPROVER_SERVER }}"
+          app: "${{ secrets[steps.caprover.outputs.app_name_key] }}"
+          token: "${{ secrets[steps.caprover.outputs.app_token_key] }}"
+          image: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }}:latest
 
   # ─── 3. Deploy-Stand markieren ───────────────────────────────────────────
   mark:
@@ -110,9 +132,9 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Set Deploy Tag
+      - name: Set Deploy Ref
         run: ./mono deploy-mark --push

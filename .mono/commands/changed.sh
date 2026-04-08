@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # description: Zeigt geänderte Apps/Libs seit dem letzten Deploy
 
-DEPLOY_TAG="${MONO_DEPLOY_TAG:-deploy/latest}"
+DEPLOY_REF="${MONO_DEPLOY_REF:-refs/deploy/latest}"
 
 # ─── Help ───────────────────────────────────────────────────────────────────
 changed::help() {
@@ -12,8 +12,7 @@ changed::help() {
   echo "  mono changed [optionen]"
   echo ""
   echo -e "${BOLD}Optionen:${NC}"
-  echo "  --tag <tag>         Deploy-Tag als Vergleichsbasis (Standard: ${DEPLOY_TAG})"
-  echo "  --ref <ref>         Beliebige Git-Ref als Vergleichsbasis"
+  echo "  --ref <ref>         Git-Ref als Vergleichsbasis (Standard: ${DEPLOY_REF})"
   echo "  --apps              Nur geänderte Apps anzeigen"
   echo "  --libs              Nur geänderte Libs anzeigen"
   echo "  --json              Ausgabe als JSON"
@@ -27,8 +26,8 @@ changed::help() {
   echo "  mono changed --json                 # JSON-Ausgabe für CI/CD"
   echo "  mono changed --quiet | xargs -I{} echo 'deploy {}'"
   echo ""
-  echo -e "${BOLD}Deploy-Tag setzen:${NC}"
-  echo "  mono deploy-mark                    # Setzt ${DEPLOY_TAG} auf HEAD"
+  echo -e "${BOLD}Deploy-Ref setzen:${NC}"
+  echo "  mono deploy-mark                    # Setzt ${DEPLOY_REF} auf HEAD"
   echo ""
   echo -e "${BOLD}Projekterkennung:${NC}"
   echo "  Projekte werden anhand einer ${BOLD}project.json${NC} im Verzeichnis erkannt."
@@ -159,8 +158,7 @@ changed::run() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --tag)     base_ref="${2:-}"; shift 2 ;;
-      --ref)     base_ref="${2:-}"; shift 2 ;;
+      --tag|--ref) base_ref="${2:-}"; shift 2 ;;
       --apps)    filter="apps"; shift ;;
       --libs)    filter="libs"; shift ;;
       --json)    output="json"; shift ;;
@@ -175,12 +173,12 @@ changed::run() {
   done
 
   if [[ -z "${base_ref}" ]]; then
-    base_ref="${DEPLOY_TAG}"
+    base_ref="${DEPLOY_REF}"
   fi
 
   if ! git -C "${MONO_ROOT}" rev-parse --verify "${base_ref}" &>/dev/null; then
-    if [[ "${base_ref}" == "${DEPLOY_TAG}" ]]; then
-      mono::warn "Deploy-Tag ${BOLD}${base_ref}${NC} existiert noch nicht."
+    if [[ "${base_ref}" == "${DEPLOY_REF}" ]]; then
+      mono::warn "Deploy-Ref ${BOLD}${base_ref}${NC} existiert noch nicht."
       mono::warn "Verwende den initialen Commit als Basis."
       base_ref="$(git -C "${MONO_ROOT}" rev-list --max-parents=0 HEAD | head -1)"
     else

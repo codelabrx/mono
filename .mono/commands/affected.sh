@@ -6,7 +6,7 @@ source "${MONO_DIR}/lib/graph.sh"
 # Cache-Library laden
 source "${MONO_DIR}/lib/cache.sh"
 
-DEPLOY_TAG="${MONO_DEPLOY_TAG:-deploy/latest}"
+DEPLOY_REF="${MONO_DEPLOY_REF:-refs/deploy/latest}"
 
 # ─── Help ───────────────────────────────────────────────────────────────────
 affected::help() {
@@ -18,7 +18,7 @@ affected::help() {
   echo ""
   echo -e "${BOLD}Optionen:${NC}"
   echo "  --target, -t <name>   Target das ausgeführt werden soll (pflicht)"
-  echo "  --tag <tag>           Deploy-Tag als Vergleichsbasis (Standard: ${DEPLOY_TAG})"
+  echo "  --tag <tag>           Deploy-Ref als Vergleichsbasis (Standard: ${DEPLOY_REF})"
   echo "  --ref <ref>           Beliebige Git-Ref als Vergleichsbasis"
   echo "  --apps                Nur geänderte Apps"
   echo "  --libs                Nur geänderte Libs"
@@ -264,12 +264,12 @@ affected::run() {
 
   # ─── Base-Ref bestimmen ─────────────────────────────────────────────────
   if [[ -z "${base_ref}" ]]; then
-    base_ref="${DEPLOY_TAG}"
+    base_ref="${DEPLOY_REF}"
   fi
 
   if ! git -C "${MONO_ROOT}" rev-parse --verify "${base_ref}" &>/dev/null; then
-    if [[ "${base_ref}" == "${DEPLOY_TAG}" ]]; then
-      mono::warn "Deploy-Tag ${BOLD}${base_ref}${NC} existiert noch nicht."
+    if [[ "${base_ref}" == "${DEPLOY_REF}" ]]; then
+      mono::warn "Deploy-Ref ${BOLD}${base_ref}${NC} existiert noch nicht."
       mono::warn "Verwende den initialen Commit als Basis."
       base_ref="$(git -C "${MONO_ROOT}" rev-list --max-parents=0 HEAD | head -1)"
     else
