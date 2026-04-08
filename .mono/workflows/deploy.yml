@@ -73,7 +73,7 @@ jobs:
       # ─── Docker Build & Push (nur bei strategy: docker) ────────────────
       - name: Set up Docker Buildx
         if: matrix.deploy.strategy == 'docker'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to Container Registry
         if: matrix.deploy.strategy == 'docker'
@@ -86,7 +86,7 @@ jobs:
       - name: Docker Meta
         if: matrix.deploy.strategy == 'docker'
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.name }}
           tags: |
@@ -95,7 +95,7 @@ jobs:
 
       - name: Build & Push Docker Image
         if: matrix.deploy.strategy == 'docker'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.path }}/Dockerfile
