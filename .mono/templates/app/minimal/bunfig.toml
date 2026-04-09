@@ -4,9 +4,3 @@
 [install]
 # Peer-Dependencies automatisch installieren
 peer = true
-
-[install.scopes]
-# Erlaubt Imports aus dem libs Verzeichnis
-
-[resolve.paths]
-"@libs/*" = ["../../libs/*"]

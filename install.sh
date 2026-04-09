@@ -154,7 +154,6 @@ install() {
   "name": "${project_name}",
   "private": true,
   "workspaces": [
-    "apps/*",
     "libs/*"
   ]
 }
@@ -166,7 +165,6 @@ EOF
   if [[ ! -f "${target_dir}/bunfig.toml" ]]; then
     cat > "${target_dir}/bunfig.toml" << 'EOF'
 [install]
-linker = "hoisted"
 linkWorkspacePackages = true
 EOF
     log "bunfig.toml erstellt"
@@ -178,9 +176,7 @@ EOF
 # dependencies (bun install)
 node_modules
 
-# lockfiles in Unterprojekten (Root bun.lock wird committed)
-apps/*/bun.lock
-apps/*/bun.lockb
+# lockfiles in Libs (Root bun.lock wird committed)
 libs/*/bun.lock
 libs/*/bun.lockb
 

@@ -180,7 +180,7 @@ lib::generate() {
   (cd "${MONO_ROOT}" && find "libs/${name}" -type f -not -path '*/node_modules/*' -not -path '*/.git/*' | sort | sed 's/^/  /')
   echo ""
 
-  # Workspace-Symlinks aktualisieren
+  # Workspace-Links aktualisieren (Libs sind Root-Workspace-Members)
   if [[ -f "${MONO_ROOT}/package.json" ]]; then
     echo ""
     mono::log "Workspace-Links aktualisieren..."
