@@ -13,16 +13,19 @@ update::help() {
   echo "  mono update [optionen]"
   echo ""
   echo -e "${BOLD}Optionen:${NC}"
-  echo "  --version <tag>     Bestimmte Version installieren (z.B. v1.0.0)"
-  echo "  --check             Nur prüfen ob ein Update verfügbar ist"
-  echo "  --list              Verfügbare Versionen anzeigen"
-  echo "  --help, -h          Diese Hilfe anzeigen"
+  echo "  --version <tag>              Bestimmte Version installieren (z.B. v1.0.0)"
+  echo "  --check                      Nur prüfen ob ein Update verfügbar ist"
+  echo "  --list                       Verfügbare Versionen anzeigen"
+  echo "  --sync-workflows <prefix>    Geänderte Workflows mit Prefix kopieren"
+  echo "  --help, -h                   Diese Hilfe anzeigen"
   echo ""
   echo -e "${BOLD}Beispiele:${NC}"
-  echo "  mono update                         # Update auf neueste Version"
-  echo "  mono update --check                 # Prüft auf Updates"
-  echo "  mono update --version v1.2.0        # Bestimmte Version installieren"
-  echo "  mono update --list                  # Zeigt verfügbare Versionen"
+  echo "  mono update                                    # Update auf neueste Version"
+  echo "  mono update --check                            # Prüft auf Updates"
+  echo "  mono update --version v1.2.0                   # Bestimmte Version installieren"
+  echo "  mono update --list                             # Zeigt verfügbare Versionen"
+  echo "  mono update --sync-workflows updated.          # Kopiert geänderte Workflows"
+  echo "                                                 # als updated.<name>.yml"
   echo ""
   echo -e "${BOLD}Aktuelle Version:${NC}"
   echo "  $(update::current_version)"
@@ -174,15 +177,8 @@ update::install() {
     fi
   done
 
-  # GitHub Workflows aktualisieren
-  if [[ -d "${MONO_DIR}/workflows" ]]; then
-    mkdir -p "${MONO_ROOT}/.github/workflows"
-    for wf in "${MONO_DIR}/workflows/"*.yml; do
-      [[ -f "${wf}" ]] || continue
-      cp "${wf}" "${MONO_ROOT}/.github/workflows/"
-    done
-    mono::log "GitHub Workflows aktualisiert"
-  fi
+  # GitHub Workflows: Nur auf Änderungen hinweisen, nicht überschreiben
+  update::check_workflow_changes
 
   # VERSION aktualisieren
   if [[ -f "${extracted_dir}/.mono/VERSION" ]]; then
@@ -207,10 +203,100 @@ update::install() {
   echo ""
 }
 
+# ─── Workflow-Änderungen prüfen ────────────────────────────────────────────
+update::check_workflow_changes() {
+  [[ -d "${MONO_DIR}/workflows" ]] || return 0
+
+  local changed=()
+  local new_files=()
+
+  for wf in "${MONO_DIR}/workflows/"*.yml; do
+    [[ -f "${wf}" ]] || continue
+    local name
+    name="$(basename "${wf}")"
+    local target="${MONO_ROOT}/.github/workflows/${name}"
+
+    if [[ ! -f "${target}" ]]; then
+      new_files+=("${name}")
+    elif ! diff -q "${wf}" "${target}" &>/dev/null; then
+      changed+=("${name}")
+    fi
+  done
+
+  if [[ ${#changed[@]} -eq 0 && ${#new_files[@]} -eq 0 ]]; then
+    mono::log "GitHub Workflows sind aktuell"
+    return 0
+  fi
+
+  echo ""
+  mono::warn "Workflow-Änderungen erkannt:"
+  for name in "${changed[@]}"; do
+    echo -e "  ${YELLOW}geändert${NC}  ${name}"
+  done
+  for name in "${new_files[@]}"; do
+    echo -e "  ${GREEN}neu${NC}       ${name}"
+  done
+  echo ""
+  echo -e "  Die Workflows in ${BOLD}.github/workflows/${NC} wurden ${BOLD}nicht${NC} überschrieben."
+  echo -e "  Verwende ${CYAN}mono update --sync-workflows [prefix]${NC} um die neuen"
+  echo -e "  Versionen mit einem Prefix ins Workflow-Verzeichnis zu kopieren."
+  echo -e "  Beispiel: ${CYAN}mono update --sync-workflows updated.${NC}"
+  echo -e "            → ${BOLD}.github/workflows/updated.deploy.yml${NC}"
+  echo ""
+}
+
+# ─── Workflows mit Prefix synchronisieren ─────────────────────────────────
+update::sync_workflows() {
+  local prefix="${1:-}"
+
+  if [[ -z "${prefix}" ]]; then
+    mono::error "Prefix fehlt: --sync-workflows <prefix>"
+    echo ""
+    echo -e "  ${BOLD}Beispiel:${NC} ${CYAN}mono update --sync-workflows updated.${NC}"
+    echo -e "  Kopiert neue Workflow-Versionen als ${BOLD}updated.<name>.yml${NC}"
+    echo ""
+    return 1
+  fi
+
+  [[ -d "${MONO_DIR}/workflows" ]] || {
+    mono::error "Keine Workflows in .mono/workflows gefunden"
+    return 1
+  }
+
+  mkdir -p "${MONO_ROOT}/.github/workflows"
+
+  local copied=0
+  for wf in "${MONO_DIR}/workflows/"*.yml; do
+    [[ -f "${wf}" ]] || continue
+    local name
+    name="$(basename "${wf}")"
+    local target="${MONO_ROOT}/.github/workflows/${name}"
+    local prefixed="${MONO_ROOT}/.github/workflows/${prefix}${name}"
+
+    # Nur kopieren wenn es Unterschiede gibt oder die Datei neu ist
+    if [[ ! -f "${target}" ]] || ! diff -q "${wf}" "${target}" &>/dev/null; then
+      cp "${wf}" "${prefixed}"
+      mono::log "Kopiert: ${BOLD}${prefix}${name}${NC}"
+      ((copied++))
+    fi
+  done
+
+  if [[ ${copied} -eq 0 ]]; then
+    mono::log "Keine Workflow-Änderungen zum Kopieren"
+  else
+    echo ""
+    mono::log "${BOLD}${copied}${NC} Workflow(s) nach ${BOLD}.github/workflows/${NC} kopiert"
+    echo -e "  Vergleiche die ${BOLD}${prefix}*${NC} Dateien mit den bestehenden Workflows"
+    echo -e "  und übernimm die Änderungen manuell."
+    echo ""
+  fi
+}
+
 # ─── Command Dispatcher ───────────────────────────────────────────────────
 update::run() {
   local target_version=""
   local mode="update"
+  local sync_prefix=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -228,6 +314,12 @@ update::run() {
         ;;
       --list)
         mode="list"
+        shift
+        ;;
+      --sync-workflows)
+        mode="sync-workflows"
+        sync_prefix="${2:-}"
+        [[ -n "${sync_prefix}" ]] && shift
         shift
         ;;
       --help|-h)
@@ -248,6 +340,14 @@ update::run() {
       ;;
     list)
       update::list_versions
+      ;;
+    sync-workflows)
+      update::sync_workflows "${sync_prefix}"
+      ;;
+    update)
+      update::install "${target_version}"
+      ;;
+  esac
       ;;
     update)
       update::install "${target_version}"
