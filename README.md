@@ -197,6 +197,7 @@ Runs a target only in **changed** projects. Detects transitively affected projec
 
 ```bash
 ./mono affected --target test                       # Test for all changed
+./mono affected --target test --env dev            # Test since refs/deploy/dev-latest
 ./mono affected --target build --apps               # Only changed apps
 ./mono affected --target lint --ref main~3          # Comparison with Git ref
 ./mono affected --target build --parallel           # Run in parallel
@@ -207,7 +208,8 @@ Runs a target only in **changed** projects. Detects transitively affected projec
 | Flag | Description |
 |------|-------------|
 | `--target`, `-t` | Target name (required) |
-| `--tag <tag>` | Deploy tag as comparison basis (default: `deploy/latest`) |
+| `--env <name>` | Uses `refs/deploy/<name>-latest` as comparison basis |
+| `--tag <tag>` | Deploy tag as comparison basis (default: `refs/deploy/latest`) |
 | `--ref <ref>` | Any Git ref as comparison basis |
 | `--apps` / `--libs` | Filter on type |
 | `--parallel`, `-j` | Parallelization |
@@ -270,7 +272,8 @@ If no `--template` is given, an interactive selection is made.
 Detects which apps and libs have changed since the last deploy.
 
 ```bash
-./mono changed                        # All changes since deploy/latest
+./mono changed                        # All changes since refs/deploy/latest
+./mono changed --env dev              # All changes since refs/deploy/dev-latest
 ./mono changed --apps                 # Only changed apps
 ./mono changed --libs                 # Only changed libs
 ./mono changed --json                 # JSON output for CI/CD
@@ -300,8 +303,8 @@ The JSON output (`--json`) contains the deploy configuration:
 Marks the current commit as the latest deploy.
 
 ```bash
-./mono deploy-mark                    # Sets deploy/latest on HEAD
-./mono deploy-mark --push             # Sets tag and pushes to remote
+./mono deploy-mark                    # Sets refs/deploy/latest on HEAD
+./mono deploy-mark --env dev --push   # Sets refs/deploy/dev-latest and pushes
 ./mono deploy-mark --tag deploy/prod  # Custom tag name
 ```
 
@@ -373,7 +376,7 @@ Runs on Pushes to `main`. The workflow has three steps:
 2. **Deploy per app** – For each changed app, a parallel job is started:
    - `mono run <app>:deploy` runs the `deploy` target
    - With `"strategy": "docker"` builds and pushes a Docker image
-3. **Deploy mark** – `mono deploy-mark --push` sets the `deploy/latest` tag
+3. **Deploy mark** – `mono deploy-mark --push` sets the `refs/deploy/main-latest` tag (configured via `MONO_DEPLOY_REF`)
 
 The deploy strategy is controlled by `deploy.strategy` in the `project.json`:
 

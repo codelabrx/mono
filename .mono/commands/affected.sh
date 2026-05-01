@@ -8,6 +8,21 @@ source "${MONO_DIR}/lib/cache.sh"
 
 DEPLOY_REF="${MONO_DEPLOY_REF:-refs/deploy/latest}"
 
+affected::normalize_ref() {
+  local ref="$1"
+
+  if [[ "${ref}" == refs/* ]]; then
+    echo "${ref}"
+  else
+    echo "refs/${ref}"
+  fi
+}
+
+affected::ref_for_env() {
+  local env_name="$1"
+  echo "refs/deploy/${env_name}-latest"
+}
+
 # ─── Help ───────────────────────────────────────────────────────────────────
 affected::help() {
   echo ""
@@ -18,6 +33,7 @@ affected::help() {
   echo ""
   echo -e "${BOLD}Optionen:${NC}"
   echo "  --target, -t <name>   Target das ausgeführt werden soll (pflicht)"
+  echo "  --env <name>          Environment nutzen (setzt refs/deploy/<name>-latest)"
   echo "  --tag <tag>           Deploy-Ref als Vergleichsbasis (Standard: ${DEPLOY_REF})"
   echo "  --ref <ref>           Beliebige Git-Ref als Vergleichsbasis"
   echo "  --apps                Nur geänderte Apps"
@@ -36,6 +52,7 @@ affected::help() {
   echo ""
   echo -e "${BOLD}Beispiele:${NC}"
   echo "  mono affected --target test              # test in geänderten Projekten"
+  echo "  mono affected --target test --env dev    # test seit refs/deploy/dev-latest"
   echo "  mono affected --target build --apps      # build nur in geänderten Apps"
   echo "  mono affected --target lint --ref main~3 # lint seit 3 Commits"
   echo "  mono affected --target build --dry-run   # Zeigt Plan"
@@ -226,6 +243,7 @@ affected::execute_with_deps() {
 affected::run() {
   local target=""
   local base_ref=""
+  local env_name=""
   local filter="all"
   local skip_deps=false
   local no_cache=false
@@ -237,6 +255,24 @@ affected::run() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --target|-t)  target="${2:-}"; shift 2 ;;
+      --env)
+        env_name="${2:-}"
+        if [[ -z "${env_name}" ]]; then
+          mono::error "Option --env benötigt einen Wert"
+          return 1
+        fi
+        base_ref="$(affected::ref_for_env "${env_name}")"
+        shift 2
+        ;;
+      --env=*)
+        env_name="${1#--env=}"
+        if [[ -z "${env_name}" ]]; then
+          mono::error "Option --env benötigt einen Wert"
+          return 1
+        fi
+        base_ref="$(affected::ref_for_env "${env_name}")"
+        shift
+        ;;
       --tag)        base_ref="${2:-}"; shift 2 ;;
       --ref)        base_ref="${2:-}"; shift 2 ;;
       --apps)       filter="apps"; shift ;;
@@ -266,6 +302,8 @@ affected::run() {
   if [[ -z "${base_ref}" ]]; then
     base_ref="${DEPLOY_REF}"
   fi
+
+  base_ref="$(affected::normalize_ref "${base_ref}")"
 
   if ! git -C "${MONO_ROOT}" rev-parse --verify "${base_ref}" &>/dev/null; then
     if [[ "${base_ref}" == "${DEPLOY_REF}" ]]; then

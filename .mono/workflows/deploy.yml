@@ -6,6 +6,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  MONO_DEPLOY_REF: refs/deploy/main-latest
 
 jobs:
   # ─── 1. Geänderte Apps ermitteln ──────────────────────────────────────────
@@ -22,7 +23,7 @@ jobs:
           fetch-depth: 0
 
       - name: Fetch Deploy Ref
-        run: git fetch origin refs/deploy/latest:refs/deploy/latest 2>/dev/null || true
+        run: git fetch origin "${MONO_DEPLOY_REF}:${MONO_DEPLOY_REF}" 2>/dev/null || true
 
       - name: Find Changed Apps
         id: changes
