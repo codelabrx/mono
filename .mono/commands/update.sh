@@ -348,11 +348,6 @@ update::run() {
       update::install "${target_version}"
       ;;
   esac
-      ;;
-    update)
-      update::install "${target_version}"
-      ;;
-  esac
 }
 
 # ─── Start ──────────────────────────────────────────────────────────────────
