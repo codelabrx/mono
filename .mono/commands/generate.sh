@@ -30,6 +30,8 @@ generate::help() {
   echo "  mono generate app backend/my-api --template bun"
   echo "  mono generate lib shared-utils --template bun"
   echo "  mono generate lib shared/config --template minimal"
+  echo "  mono generate target --apps --target format --command \"bun run format\""
+  echo "  mono generate target --libs --target lint --command \"bun run lint\""
   echo ""
 }
 

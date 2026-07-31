@@ -267,6 +267,27 @@ If no `--template` is given, an interactive selection is made.
 
 **Create your own templates:** Create a new folder under `.mono/templates/app/<name>/` or `.mono/templates/lib/<name>/`. Files can use the above placeholders. A `.template` file (Line 1 = Description, `init: <command>` = Post-init command) is used as metadata and not copied.
 
+**Add a target to every app/lib:**
+
+```bash
+./mono generate target --apps --target format --command "bun run format"      # Adds "format" to every apps/**/project.json
+./mono generate target --libs --target lint --command "bun run lint" --depends-on install
+./mono generate target --apps --libs --target ci --command "bun run ci" --force  # Overwrite existing targets
+./mono generate target --apps --target format --dry-run                       # Preview without writing
+```
+
+| Flag | Description |
+|------|-------------|
+| `--apps` | Apply to every `apps/**/project.json` |
+| `--libs` | Apply to every `libs/**/project.json` |
+| `--target`, `-t` | Target name (required) |
+| `--command`, `-c` | Command to run (prompted interactively if omitted) |
+| `--depends-on` | Comma-separated `dependsOn` list |
+| `--force` | Overwrite the target if it already exists in a project |
+| `--dry-run` | Show what would change without writing |
+
+Projects that already have a target with that name are skipped unless `--force` is given. Projects without a `targets` field are skipped with a warning.
+
 ### `changed`
 
 Detects which apps and libs have changed since the last deploy.
