@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # description: Zeigt geänderte Apps/Libs seit dem letzten Deploy
 
+# Graph-Library laden (für transitive Abhängigkeiten)
+source "${MONO_DIR}/lib/graph.sh"
+
 DEPLOY_REF="${MONO_DEPLOY_REF:-refs/deploy/latest}"
 
 changed::normalize_ref() {
@@ -42,6 +45,11 @@ changed::help() {
   echo "  mono changed --ref main~5           # Vergleich mit 5 Commits zurück"
   echo "  mono changed --json                 # JSON-Ausgabe für CI/CD"
   echo "  mono changed --quiet | xargs -I{} echo 'deploy {}'"
+  echo ""
+  echo -e "${BOLD}Transitive Abhängigkeiten:${NC}"
+  echo "  Wenn sich eine Lib ändert, werden alle Projekte die"
+  echo "  (direkt oder transitiv) davon abhängen ebenfalls angezeigt"
+  echo "  (markiert als ${YELLOW}(transitiv)${NC})."
   echo ""
   echo -e "${BOLD}Deploy-Ref setzen:${NC}"
   echo "  mono deploy-mark                    # Setzt ${DEPLOY_REF} auf HEAD"
@@ -237,18 +245,58 @@ changed::run() {
     return 0
   fi
 
-  local projects
-  projects="$(echo "${changed_files}" | changed::extract_projects "${filter}")"
+  # Graph aufbauen, um transitive Dependents ermitteln zu können
+  graph::build
 
-  if [[ -z "${projects}" ]]; then
+  local directly_changed
+  directly_changed="$(echo "${changed_files}" | changed::extract_projects "${filter}")"
+
+  if [[ -z "${directly_changed}" ]]; then
     changed::output_empty "${output}" "${base_sha}" "${head_sha}" "${base_ref}"
     return 0
   fi
 
+  # ─── Transitive Dependents hinzufügen (wie bei `mono affected`) ─────────
+  # Wenn sich eine Lib ändert, gelten alle Projekte, die (direkt oder
+  # transitiv) davon abhängen, ebenfalls als geändert.
+  local all_projects="${directly_changed}"
+
+  while IFS= read -r proj; do
+    [[ -z "${proj}" || "${proj}" == "." ]] && continue
+    local dependents
+    dependents="$(graph::transitive_dependents "${proj}" "")"
+    if [[ -n "${dependents}" ]]; then
+      all_projects="${all_projects}"$'\n'"${dependents}"
+    fi
+  done <<< "${directly_changed}"
+
+  all_projects="$(echo "${all_projects}" | grep -v '^$' | sort -u)"
+
+  # Filter erneut anwenden (transitive Dependents können einen anderen Typ
+  # haben, z. B. eine App die von einer geänderten Lib abhängt)
+  if [[ "${filter}" != "all" ]]; then
+    local filtered=""
+    while IFS= read -r proj; do
+      [[ -z "${proj}" ]] && continue
+      case "${filter}" in
+        apps) [[ "${proj}" == apps/* ]] && filtered="${filtered}${proj}"$'\n' ;;
+        libs) [[ "${proj}" == libs/* ]] && filtered="${filtered}${proj}"$'\n' ;;
+      esac
+    done <<< "${all_projects}"
+    all_projects="$(echo "${filtered}" | grep -v '^$')"
+  fi
+
+  if [[ -z "${all_projects}" ]]; then
+    changed::output_empty "${output}" "${base_sha}" "${head_sha}" "${base_ref}"
+    return 0
+  fi
+
+  local directly_changed_list=",$(echo "${directly_changed}" | tr '\n' ','),"
+
   case "${output}" in
-    json)   changed::output_json "${projects}" "${base_sha}" "${head_sha}" ;;
-    quiet)  echo "${projects}" ;;
-    pretty) changed::output_pretty "${projects}" "${base_sha}" "${head_sha}" "${base_ref}" ;;
+    json)   changed::output_json "${all_projects}" "${base_sha}" "${head_sha}" "${directly_changed_list}" ;;
+    quiet)  echo "${all_projects}" ;;
+    pretty) changed::output_pretty "${all_projects}" "${base_sha}" "${head_sha}" "${base_ref}" "${directly_changed_list}" ;;
   esac
 }
 
@@ -264,7 +312,7 @@ changed::output_empty() {
 
 # ─── Ausgabe: JSON (mit project.json-Daten) ─────────────────────────────────
 changed::output_json() {
-  local projects="$1" base_sha="$2" head_sha="$3"
+  local projects="$1" base_sha="$2" head_sha="$3" directly_changed_list="$4"
   local items=""
 
   while IFS= read -r project; do
@@ -281,8 +329,11 @@ changed::output_json() {
     [[ -z "${name}" ]] && name="$(basename "${project}")"
     [[ -z "${strategy}" ]] && strategy="none"
 
+    local direct="true"
+    [[ "${directly_changed_list}" != *",${project},"* ]] && direct="false"
+
     [[ -n "${items}" ]] && items="${items},"
-    items="${items}{\"path\":\"${project}\",\"name\":\"${name}\",\"type\":\"${type}\",\"deploy\":{\"strategy\":\"${strategy}\"}}"
+    items="${items}{\"path\":\"${project}\",\"name\":\"${name}\",\"type\":\"${type}\",\"direct\":${direct},\"deploy\":{\"strategy\":\"${strategy}\"}}"
   done <<< "${projects}"
 
   echo "{\"base\":\"${base_sha}\",\"head\":\"${head_sha}\",\"changed\":[${items}]}"
@@ -290,13 +341,13 @@ changed::output_json() {
 
 # ─── Ausgabe: Pretty (mit Deploy-Infos) ────────────────────────────────────
 changed::output_pretty() {
-  local projects="$1" base_sha="$2" head_sha="$3" base_ref="$4"
+  local projects="$1" base_sha="$2" head_sha="$3" base_ref="$4" directly_changed_list="$5"
 
   echo ""
   mono::log "Änderungen: ${BOLD}${base_ref}${NC} (${base_sha}) → HEAD (${head_sha})"
   echo ""
 
-  local app_count=0 lib_count=0 other_count=0
+  local app_count=0 lib_count=0 other_count=0 direct_count=0 transitive_count=0
 
   while IFS= read -r project; do
     [[ -z "${project}" ]] && continue
@@ -336,7 +387,15 @@ changed::output_pretty() {
       warning=" ${RED}(project.json fehlt!)${NC}"
     fi
 
-    echo -e "  ${icon} ${CYAN}${project}${NC}${deploy_info}${warning}"
+    local marker=""
+    if [[ "${directly_changed_list}" == *",${project},"* ]]; then
+      direct_count=$((direct_count + 1))
+    else
+      marker=" ${YELLOW}(transitiv)${NC}"
+      transitive_count=$((transitive_count + 1))
+    fi
+
+    echo -e "  ${icon} ${CYAN}${project}${NC}${marker}${deploy_info}${warning}"
   done <<< "${projects}"
 
   echo ""
@@ -344,7 +403,9 @@ changed::output_pretty() {
   [[ ${app_count} -gt 0 ]] && summary="${app_count} App(s)"
   [[ ${lib_count} -gt 0 ]] && summary="${summary:+${summary}, }${lib_count} Lib(s)"
   [[ ${other_count} -gt 0 ]] && summary="${summary:+${summary}, }${other_count} Root"
-  mono::log "Gesamt: ${summary}"
+  local detail="${direct_count} direkt"
+  [[ ${transitive_count} -gt 0 ]] && detail="${detail}, ${transitive_count} transitiv"
+  mono::log "Gesamt: ${summary} (${detail})"
   echo ""
 }
 
