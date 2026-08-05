@@ -83,6 +83,7 @@ The installer sets up the following structure in the target directory:
 | `changed` | Shows changed apps/libs since the last deploy |
 | `deploy-mark` | Sets the deploy tag on the current commit |
 | `cache` | Cache management (statistics, list, clear) |
+| `caprover-deploy-image` | Deploys a Docker image to a CapRover app |
 | `update` | CLI update to the latest version |
 | `help` | Shows all available commands |
 
@@ -338,6 +339,26 @@ Manages the task cache.
 ./mono cache list                     # All cached targets
 ./mono cache clear                    # Clears the entire cache
 ```
+
+### `caprover-deploy-image`
+
+Deploys an already built Docker image to an existing CapRover app, without `caprover-cli` — it rebuilds the HTTP API call directly (bash + curl only, no `node`/`jq`/`git` required). No source code is packaged/uploaded; only a `captain-definition` JSON with the image name is sent, and CapRover pulls the image itself.
+
+```bash
+./mono caprover-deploy-image registry.example.com/my-app:1.2.3 \
+  --caproverUrl https://captain.example.com \
+  --appName my-app --appToken xxxxxxxx
+
+./mono caprover-deploy-image registry.example.com/my-app:1.2.3 --watch  # Poll build status until done
+```
+
+| Flag / Env var | Description |
+|------|-------------|
+| `--caproverUrl` / `CAPROVER_URL` | CapRover URL, e.g. `https://captain.example.com` |
+| `--appName` / `CAPROVER_APP` | App name as registered on the CapRover server |
+| `--appToken` / `CAPROVER_APP_TOKEN` | App token (CapRover Dashboard → App → Deployment → Method 3) |
+| `-i`, `--image` / `IMAGE_NAME` | Docker image incl. tag (can also be given positionally) |
+| `-w`, `--watch` / `CAPROVER_WATCH=1` | Poll build status every 2s until the build finishes |
 
 ---
 
