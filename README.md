@@ -115,6 +115,15 @@ Each project (App/Lib) contains a `project.json`, which serves as the project ma
       "command": "bun test",
       "dependsOn": ["install"],
       "cache": false
+    },
+    "applyTerraform": {
+      "commands": [
+        "terraform init",
+        "terraform validate",
+        "terraform plan",
+        "terraform apply -auto-approve"
+      ],
+      "parallel": false
     }
   },
   "deploy": {
@@ -131,12 +140,16 @@ Each project (App/Lib) contains a `project.json`, which serves as the project ma
 | `type` | `app` or `lib` |
 | `path` | Relative path in the monorepo |
 | `targets` | Executable commands |
-| `targets.<name>.command` | The CLI command that is executed |
+| `targets.<name>.command` | The CLI command that is executed (shorthand for a single command) |
+| `targets.<name>.commands` | List of commands to execute instead of a single `command` |
+| `targets.<name>.parallel` | With `commands`: `false` (default) runs them one after another and stops on the first failure, `true` runs them all at once |
 | `targets.<name>.dependsOn` | Targets that must be executed before |
 | `targets.<name>.outputs` | Output paths for caching (e.g. `["dist/**"]`) |
 | `targets.<name>.cache` | `false` to disable caching for this target |
 | `deploy` | Deploy configuration |
 | `dependencies` | Library dependencies (optional, in addition to auto-detection) |
+
+A target defines either `command` (single string, shorthand) or `commands` (list) — not both. `run`, `run-many` and `affected` all understand both forms.
 
 ---
 

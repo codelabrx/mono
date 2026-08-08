@@ -5,6 +5,8 @@
 source "${MONO_DIR}/lib/graph.sh"
 # Cache-Library laden
 source "${MONO_DIR}/lib/cache.sh"
+# Target-Library laden (Command-Parsing & Ausführung)
+source "${MONO_DIR}/lib/target.sh"
 
 DEPLOY_REF="${MONO_DEPLOY_REF:-refs/deploy/latest}"
 
@@ -171,14 +173,16 @@ affected::execute_with_deps() {
     return 0
   fi
 
-  local command
-  command="$(sed -n '/"'"${target}"'"[[:space:]]*:[[:space:]]*{/,/}/p' "${project_file}" \
-    | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+  local commands
+  commands="$(target::commands "${project_file}" "${target}")"
 
-  if [[ -z "${command}" ]]; then
+  if [[ -z "${commands}" ]]; then
     mono::error "Target ${BOLD}${target}${NC} nicht gefunden in ${project_dir}/project.json"
     return 1
   fi
+
+  local run_parallel=false
+  target::is_parallel "${project_file}" "${target}" && run_parallel=true
 
   if [[ "${skip_deps}" != "true" ]]; then
     local deps_block
@@ -209,7 +213,7 @@ affected::execute_with_deps() {
   if [[ "${no_cache}" != "true" ]]; then
     if cache::is_cacheable "${project_file}" "${target}"; then
       use_cache=true
-      input_hash="$(cache::compute_hash "${project_dir}" "${target}" "${command}")"
+      input_hash="$(cache::compute_hash "${project_dir}" "${target}" "${commands}")"
 
       if cache::check "${project_dir}" "${target}" "${input_hash}"; then
         mono::log "${BOLD}${proj_name}:${target}${NC} ${GREEN}[cache hit]${NC} ✓"
@@ -219,9 +223,11 @@ affected::execute_with_deps() {
     fi
   fi
 
-  mono::log "${BOLD}${proj_name}:${target}${NC} → ${command}"
+  local command_display
+  command_display="$(target::display_string "${commands}")"
+  mono::log "${BOLD}${proj_name}:${target}${NC} → ${command_display}"
 
-  (cd "${full_dir}" && eval "${command}")
+  target::run_commands "${commands}" "${full_dir}" "${run_parallel}"
   local exit_code=$?
 
   if [[ ${exit_code} -ne 0 ]]; then
@@ -231,7 +237,7 @@ affected::execute_with_deps() {
 
   # Cache speichern
   if [[ "${use_cache}" == true && -n "${input_hash}" ]]; then
-    cache::save "${project_dir}" "${target}" "${input_hash}" "${command}"
+    cache::save "${project_dir}" "${target}" "${input_hash}" "${commands}"
     cache::cleanup_target "${project_dir}" "${target}" "${input_hash}"
   fi
 

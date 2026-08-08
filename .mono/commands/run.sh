@@ -5,6 +5,8 @@
 source "${MONO_DIR}/lib/graph.sh"
 # Cache-Library laden
 source "${MONO_DIR}/lib/cache.sh"
+# Target-Library laden (Command-Parsing & Ausführung)
+source "${MONO_DIR}/lib/target.sh"
 
 # ─── Help ───────────────────────────────────────────────────────────────────
 run::help() {
@@ -33,8 +35,21 @@ run::help() {
   echo '    "dev": {'
   echo '      "command": "bun run --watch src/index.ts",'
   echo '      "dependsOn": ["install"]'
+  echo '    },'
+  echo '    "applyTerraform": {'
+  echo '      "commands": ['
+  echo '        "terraform init",'
+  echo '        "terraform validate",'
+  echo '        "terraform plan",'
+  echo '        "terraform apply -auto-approve"'
+  echo '      ],'
+  echo '      "parallel": false'
   echo '    }'
   echo '  }'
+  echo ""
+  echo -e "  Statt eines einzelnen ${CYAN}command${NC} kann ein Target auch eine Liste"
+  echo -e "  ${CYAN}commands${NC} definieren. ${CYAN}parallel${NC} steuert, ob diese Liste"
+  echo "  nacheinander (false, Standard) oder gleichzeitig (true) läuft."
   echo ""
 }
 
@@ -193,8 +208,11 @@ run::list_targets() {
   while IFS= read -r target_name; do
     [[ -z "${target_name}" ]] && continue
 
-    local cmd deps_list
-    cmd="$(run::get_target_command "${project_file}" "${target_name}")"
+    local cmds cmd_count cmd deps_list
+    cmds="$(target::commands "${project_file}" "${target_name}")"
+    cmd_count="$(echo "${cmds}" | grep -c -v '^$')"
+    cmd="$(target::display_string "${cmds}")"
+    [[ ${cmd_count} -gt 1 ]] && cmd="${cmd} (${cmd_count} commands)"
     deps_list="$(run::get_target_deps "${project_file}" "${target_name}" | tr '\n' ', ' | sed 's/, *$//')"
 
     local deps_str=""
@@ -265,13 +283,22 @@ run::execute_target() {
     return 0
   fi
 
-  # Command lesen
-  local command
-  command="$(run::get_target_command "${project_file}" "${target}")"
-  if [[ -z "${command}" ]]; then
+  # Commands lesen (Kurzform "command" oder Liste "commands")
+  local commands
+  commands="$(target::commands "${project_file}" "${target}")"
+  if [[ -z "${commands}" ]]; then
     mono::error "Target ${BOLD}${target}${NC} nicht gefunden in ${project_dir}/project.json"
     return 1
   fi
+
+  local command_count
+  command_count="$(echo "${commands}" | grep -c -v '^$')"
+
+  local run_parallel=false
+  target::is_parallel "${project_file}" "${target}" && run_parallel=true
+
+  local command_display
+  command_display="$(target::display_string "${commands}")"
 
   # DependsOn auflösen
   if [[ "${skip_deps}" != "true" ]]; then
@@ -299,7 +326,7 @@ run::execute_target() {
   if [[ "${no_cache}" != "true" && "${dry_run}" != "true" ]]; then
     if cache::is_cacheable "${project_file}" "${target}"; then
       use_cache=true
-      input_hash="$(cache::compute_hash "${project_dir}" "${target}" "${command}")"
+      input_hash="$(cache::compute_hash "${project_dir}" "${target}" "${commands}")"
 
       if cache::check "${project_dir}" "${target}" "${input_hash}"; then
         mono::log "${BOLD}${proj_name}:${target}${NC} ${GREEN}[cache hit]${NC} ✓"
@@ -309,16 +336,21 @@ run::execute_target() {
     fi
   fi
 
+  local mode_suffix=""
+  if [[ ${command_count} -gt 1 ]]; then
+    mode_suffix=" ${YELLOW}(${command_count} commands, $([[ "${run_parallel}" == true ]] && echo "parallel" || echo "sequenziell"))${NC}"
+  fi
+
   if [[ "${dry_run}" == "true" ]]; then
-    echo -e "  ${CYAN}${proj_name}:${target}${NC} → ${command}"
+    echo -e "  ${CYAN}${proj_name}:${target}${NC} → ${command_display}${mode_suffix}"
     echo -e "    ${YELLOW}(cwd: ${project_dir})${NC}"
   else
     echo ""
-    mono::log "${BOLD}${proj_name}:${target}${NC} → ${command}"
+    mono::log "${BOLD}${proj_name}:${target}${NC} → ${command_display}${mode_suffix}"
     mono::log "cwd: ${project_dir}"
     echo ""
 
-    (cd "${full_dir}" && eval "${command}")
+    target::run_commands "${commands}" "${full_dir}" "${run_parallel}"
     local exit_code=$?
 
     if [[ ${exit_code} -ne 0 ]]; then
@@ -328,7 +360,7 @@ run::execute_target() {
 
     # Cache speichern
     if [[ "${use_cache}" == true && -n "${input_hash}" ]]; then
-      cache::save "${project_dir}" "${target}" "${input_hash}" "${command}"
+      cache::save "${project_dir}" "${target}" "${input_hash}" "${commands}"
       cache::cleanup_target "${project_dir}" "${target}" "${input_hash}"
     fi
 

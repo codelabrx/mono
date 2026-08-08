@@ -5,6 +5,8 @@
 source "${MONO_DIR}/lib/graph.sh"
 # Cache-Library laden
 source "${MONO_DIR}/lib/cache.sh"
+# Target-Library laden (Command-Parsing & Ausführung)
+source "${MONO_DIR}/lib/target.sh"
 
 # ─── Help ───────────────────────────────────────────────────────────────────
 run_many::help() {
@@ -31,6 +33,11 @@ run_many::help() {
   echo "  Projekte werden in topologischer Reihenfolge ausgeführt"
   echo "  (Dependencies zuerst, basierend auf project.json dependencies)."
   echo "  Mit --parallel werden unabhängige Projekte gleichzeitig gebaut."
+  echo ""
+  echo "  Ein Target kann statt eines einzelnen \"command\" auch eine Liste"
+  echo "  \"commands\" definieren, mit einem eigenen \"parallel\"-Flag (true/false)"
+  echo "  das steuert ob diese Commands nacheinander oder gleichzeitig laufen –"
+  echo "  siehe 'mono run --help'."
   echo ""
   echo -e "${BOLD}Beispiele:${NC}"
   echo "  mono run-many --target build            # build in allen Projekten"
@@ -72,15 +79,17 @@ run_many::execute_with_deps() {
     return 0
   fi
 
-  # Command lesen
-  local command
-  command="$(sed -n '/"'"${target}"'"[[:space:]]*:[[:space:]]*{/,/}/p' "${project_file}" \
-    | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+  # Commands lesen (Kurzform "command" oder Liste "commands")
+  local commands
+  commands="$(target::commands "${project_file}" "${target}")"
 
-  if [[ -z "${command}" ]]; then
+  if [[ -z "${commands}" ]]; then
     mono::error "Target ${BOLD}${target}${NC} nicht gefunden in ${project_dir}/project.json"
     return 1
   fi
+
+  local run_parallel=false
+  target::is_parallel "${project_file}" "${target}" && run_parallel=true
 
   # DependsOn auflösen
   if [[ "${skip_deps}" != "true" ]]; then
@@ -113,7 +122,7 @@ run_many::execute_with_deps() {
   if [[ "${no_cache}" != "true" ]]; then
     if cache::is_cacheable "${project_file}" "${target}"; then
       use_cache=true
-      input_hash="$(cache::compute_hash "${project_dir}" "${target}" "${command}")"
+      input_hash="$(cache::compute_hash "${project_dir}" "${target}" "${commands}")"
 
       if cache::check "${project_dir}" "${target}" "${input_hash}"; then
         mono::log "${BOLD}${proj_name}:${target}${NC} ${GREEN}[cache hit]${NC} ✓"
@@ -123,9 +132,11 @@ run_many::execute_with_deps() {
     fi
   fi
 
-  mono::log "${BOLD}${proj_name}:${target}${NC} → ${command}"
+  local command_display
+  command_display="$(target::display_string "${commands}")"
+  mono::log "${BOLD}${proj_name}:${target}${NC} → ${command_display}"
 
-  (cd "${full_dir}" && eval "${command}")
+  target::run_commands "${commands}" "${full_dir}" "${run_parallel}"
   local exit_code=$?
 
   if [[ ${exit_code} -ne 0 ]]; then
@@ -135,7 +146,7 @@ run_many::execute_with_deps() {
 
   # Cache speichern
   if [[ "${use_cache}" == true && -n "${input_hash}" ]]; then
-    cache::save "${project_dir}" "${target}" "${input_hash}" "${command}"
+    cache::save "${project_dir}" "${target}" "${input_hash}" "${commands}"
     cache::cleanup_target "${project_dir}" "${target}" "${input_hash}"
   fi
 
